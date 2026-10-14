@@ -106,7 +106,11 @@ impl CoverageSource for SqlSource {
 
     fn comuni(&mut self) -> Result<Vec<Comune>> {
         let t = self.exec.query("SELECT `comune`, `provincia`, `table_name` FROM `comuni` ORDER BY `comune`", &[])?;
-        let istat = self.exec.query("SELECT `nome_comune`, `sigla_provincia`, `codice_comune` FROM `istat`", &[]).map(|t| t.rows).unwrap_or_default();
+        let istat = self
+            .exec
+            .query("SELECT `nome_comune`, `sigla_provincia`, `codice_comune`, `nome_regione`, `nome_provincia` FROM `istat`", &[])
+            .map(|t| t.rows)
+            .unwrap_or_default();
         let mut out: Vec<Comune> = t
             .rows
             .iter()
@@ -114,13 +118,15 @@ impl CoverageSource for SqlSource {
                 name: address::normalize(&text(r, 0)),
                 provincia: address::normalize(&text(r, 1)),
                 table: text(r, 2),
-                istat: String::new(),
+                ..Default::default()
             })
             .filter(|c| !c.name.is_empty())
             .collect();
         for c in &mut out {
             if let Some(r) = istat.iter().find(|r| address::normalize(&text(r, 0)) == c.name && address::normalize(&text(r, 1)) == c.provincia) {
                 c.istat = text(r, 2);
+                c.regione = address::normalize(&text(r, 3));
+                c.provincia_name = address::normalize(&text(r, 4));
             }
         }
         Ok(out)

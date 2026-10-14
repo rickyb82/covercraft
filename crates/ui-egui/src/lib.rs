@@ -40,6 +40,9 @@ pub enum Request {
 /// The address being typed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Form {
+    /// Region and province chosen in the cascade (empty = any).
+    pub regione: String,
+    pub provincia: String,
     pub comune: String,
     pub via: String,
     pub civico: String,
@@ -49,6 +52,9 @@ pub struct Form {
     pub sent_query: String,
     pub focus_via: bool,
     pub focus_civico: bool,
+    /// The suggestion menu under a field had the pointer on the last frame (so a click on it
+    /// lands even though the field lost the focus on the press).
+    pub menu_hover: [bool; 3],
 }
 
 pub struct CoverApp {
@@ -221,15 +227,54 @@ impl CoverApp {
         self.run("street.search", json!({"comune": self.form.comune.trim(), "query": q, "limit": 12}));
     }
 
-    /// The comuni whose name starts with what is typed.
+    /// The comuni of the chosen region and province.
+    pub fn comuni_within(&self) -> Vec<core::model::Comune> {
+        let (r, p) = (&self.form.regione, &self.form.provincia);
+        self.session
+            .state()
+            .comuni
+            .iter()
+            .filter(|c| r.is_empty() || &c.regione == r)
+            .filter(|c| p.is_empty() || &c.provincia == p)
+            .cloned()
+            .collect()
+    }
+
+    /// The regions known to the database.
+    pub fn regioni(&self) -> Vec<String> {
+        let mut out: Vec<String> = self.session.state().comuni.iter().map(|c| c.regione.clone()).filter(|r| !r.is_empty()).collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    /// The provinces of the chosen region: (code, name).
+    pub fn province(&self) -> Vec<(String, String)> {
+        let r = &self.form.regione;
+        let mut out: Vec<(String, String)> = self
+            .session
+            .state()
+            .comuni
+            .iter()
+            .filter(|c| r.is_empty() || &c.regione == r)
+            .map(|c| (c.provincia.clone(), c.provincia_name.clone()))
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    /// The comuni whose name starts with what is typed (within the region and province; with
+    /// nothing typed, the first of the province).
     pub fn comune_hits(&self) -> Vec<core::model::Comune> {
         let q = core::address::normalize(&self.form.comune);
+        let within = self.comuni_within();
         if q.is_empty() {
-            return Vec::new();
+            return if self.form.provincia.is_empty() { Vec::new() } else { within.into_iter().take(12).collect() };
         }
-        let mut out: Vec<core::model::Comune> = self.session.state().comuni.iter().filter(|c| c.name.starts_with(&q)).take(10).cloned().collect();
+        let mut out: Vec<core::model::Comune> = within.iter().filter(|c| c.name.starts_with(&q)).take(10).cloned().collect();
         if out.len() < 10 {
-            for c in self.session.state().comuni.iter().filter(|c| !c.name.starts_with(&q) && c.name.contains(&q)) {
+            for c in within.iter().filter(|c| !c.name.starts_with(&q) && c.name.contains(&q)) {
                 if out.len() >= 10 {
                     break;
                 }
@@ -337,9 +382,20 @@ mod tests {
         app.language = Language::It;
         frame(&mut app, &ctx, vec![]);
         frame(&mut app, &ctx, vec![]);
-        assert_eq!(app.session.state().comuni.len(), 4);
+        assert_eq!(app.session.state().comuni.len(), 5);
         app.form.comune = "cag".into();
         assert_eq!(app.comune_hits()[0].name, "CAGLIARI");
+        assert_eq!(app.regioni(), vec!["LAZIO".to_string(), "SARDEGNA".to_string()]);
+        app.form.regione = "SARDEGNA".into();
+        assert_eq!(app.province().len(), 3);
+        app.form.provincia = "CA".into();
+        app.form.comune.clear();
+        assert_eq!(app.comune_hits().len(), 2);
+        app.form.regione = "LAZIO".into();
+        app.form.provincia.clear();
+        app.form.comune = "cag".into();
+        assert!(app.comune_hits().is_empty());
+        app.form.regione.clear();
         app.form.comune = "Cagliari".into();
         app.form.via = "via ro".into();
         frame(&mut app, &ctx, vec![]);

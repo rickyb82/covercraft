@@ -106,7 +106,17 @@ pub fn fill(src: &mut SqlSource) -> Result<()> {
     create_schema(src, &tables)?;
     for c in &m.comuni {
         insert(src, "comuni", &[("comune", &c.name), ("provincia", &c.provincia), ("table_name", &c.table)])?;
-        insert(src, "istat", &[("codice_comune", &c.istat), ("nome_comune", &c.name), ("sigla_provincia", &c.provincia)])?;
+        insert(
+            src,
+            "istat",
+            &[
+                ("codice_comune", &c.istat),
+                ("nome_comune", &c.name),
+                ("sigla_provincia", &c.provincia),
+                ("nome_regione", &c.regione),
+                ("nome_provincia", &c.provincia_name),
+            ],
+        )?;
     }
     let cagliari = m.comuni.first().ok_or_else(|| Error::Invalid("demo".into()))?;
     for (i, (egon, row)) in m.tim.iter().enumerate() {
@@ -282,11 +292,12 @@ mod tests {
         assert!(ddl.iter().any(|s| s.contains("`requests_log`") && s.contains("INTEGER PRIMARY KEY AUTOINCREMENT")));
         assert!(ddl.iter().all(|s| !s.contains("ENGINE") && !s.contains(" KEY `")));
         let mut src = crate::demo_sqlite().unwrap();
-        assert!(src.ping().unwrap().contains("4 comuni"), "{}", src.ping().unwrap());
+        assert!(src.ping().unwrap().contains("5 comuni"), "{}", src.ping().unwrap());
         let comuni = src.comuni().unwrap();
-        assert_eq!(comuni.len(), 4);
+        assert_eq!(comuni.len(), 5);
         let cagliari = comuni.iter().find(|c| c.name == "CAGLIARI").cloned().unwrap();
         assert_eq!(cagliari.istat, "092009");
+        assert_eq!((cagliari.regione.as_str(), cagliari.provincia_name.as_str()), ("SARDEGNA", "CAGLIARI"));
         let streets = src.streets(&cagliari, "via rom", 20).unwrap();
         assert_eq!(streets.len(), 1);
         assert_eq!(streets[0].display(), "VIA ROMA");

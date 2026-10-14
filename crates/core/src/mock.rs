@@ -50,10 +50,46 @@ impl Default for MockSource {
 impl MockSource {
     pub fn demo() -> Self {
         let comuni = vec![
-            Comune { name: "CAGLIARI".into(), provincia: "CA".into(), table: "netmap_demo_cagliari".into(), istat: "092009".into() },
-            Comune { name: "QUARTU SANT'ELENA".into(), provincia: "CA".into(), table: "netmap_demo_quartu".into(), istat: "092051".into() },
-            Comune { name: "SASSARI".into(), provincia: "SS".into(), table: "netmap_demo_sassari".into(), istat: "090064".into() },
-            Comune { name: "NUORO".into(), provincia: "NU".into(), table: String::new(), istat: "091051".into() },
+            Comune {
+                name: "CAGLIARI".into(),
+                provincia: "CA".into(),
+                table: "netmap_demo_cagliari".into(),
+                istat: "092009".into(),
+                regione: "SARDEGNA".into(),
+                provincia_name: "CAGLIARI".into(),
+            },
+            Comune {
+                name: "QUARTU SANT'ELENA".into(),
+                provincia: "CA".into(),
+                table: "netmap_demo_quartu".into(),
+                istat: "092051".into(),
+                regione: "SARDEGNA".into(),
+                provincia_name: "CAGLIARI".into(),
+            },
+            Comune {
+                name: "SASSARI".into(),
+                provincia: "SS".into(),
+                table: "netmap_demo_sassari".into(),
+                istat: "090064".into(),
+                regione: "SARDEGNA".into(),
+                provincia_name: "SASSARI".into(),
+            },
+            Comune {
+                name: "NUORO".into(),
+                provincia: "NU".into(),
+                table: String::new(),
+                istat: "091051".into(),
+                regione: "SARDEGNA".into(),
+                provincia_name: "NUORO".into(),
+            },
+            Comune {
+                name: "ROMA".into(),
+                provincia: "RM".into(),
+                table: String::new(),
+                istat: "058091".into(),
+                regione: "LAZIO".into(),
+                provincia_name: "ROMA".into(),
+            },
         ];
         let civici = vec![
             civico("100010", "10001", "VIA", "ROMA", "10"),
@@ -452,7 +488,7 @@ mod tests {
     #[test]
     fn the_demo_city_answers() {
         let mut m = MockSource::demo();
-        assert!(m.ping().unwrap().contains("comuni"));
+        assert!(m.ping().unwrap().contains("5 comuni"));
         let cagliari = m.comuni().unwrap()[0].clone();
         let streets = m.streets(&cagliari, "rom", 10).unwrap();
         assert_eq!(streets.len(), 1);

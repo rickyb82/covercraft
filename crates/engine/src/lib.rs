@@ -391,7 +391,7 @@ impl CoverSession for Session {
 }
 
 pub fn comune_json(c: &Comune) -> Value {
-    json!({"name": c.name, "provincia": c.provincia, "istat": c.istat, "has_tim": !c.table.is_empty()})
+    json!({"name": c.name, "provincia": c.provincia, "provincia_name": c.provincia_name, "regione": c.regione, "istat": c.istat, "has_tim": !c.table.is_empty(), "display": c.display()})
 }
 
 pub fn street_json(s: &Street) -> Value {
@@ -445,9 +445,15 @@ mod tests {
         assert!(v["ok"].as_bool().unwrap());
         assert_eq!(s.state().db_state, "connected");
         let v = run(&mut s, "comune.list", json!({})).unwrap();
-        assert_eq!(v["comuni"].as_array().unwrap().len(), 4);
+        assert_eq!(v["comuni"].as_array().unwrap().len(), 5);
         let v = run(&mut s, "comune.list", json!({"query": "qua"})).unwrap();
         assert_eq!(v["comuni"].as_array().unwrap().len(), 1);
+        let v = run(&mut s, "comune.list", json!({"regione": "sardegna", "provincia": "CA"})).unwrap();
+        assert_eq!(v["comuni"].as_array().unwrap().len(), 2);
+        let v = run(&mut s, "comune.list", json!({"regioni": true})).unwrap();
+        assert_eq!(v["regioni"].as_array().unwrap().len(), 2);
+        let v = run(&mut s, "comune.list", json!({"regione": "Lazio", "province": true})).unwrap();
+        assert_eq!(v["province"][0]["sigla"], "RM");
         let v = run(&mut s, "street.search", json!({"comune": "cagliari", "query": "ro"})).unwrap();
         assert_eq!(v["streets"][0]["display"], "VIA ROMA");
         let v = run(&mut s, "civico.list", json!({"comune": "Cagliari (CA)", "street_egon": "10001"})).unwrap();

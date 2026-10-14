@@ -73,11 +73,29 @@ fn prefs_set(sess: &mut Session, v: &Value) -> Result<Value> {
 
 fn comune_list(sess: &mut Session, v: &Value) -> Result<Value> {
     let query = address::normalize(&s(v, "query"));
+    let regione = address::normalize(&s(v, "regione"));
+    let provincia = address::normalize(&s(v, "provincia"));
     if !sess.state.comuni.is_empty() && !v.get("refresh").and_then(Value::as_bool).unwrap_or(false) {
-        let list: Vec<Value> = sess
+        let within = sess
             .state
             .comuni
             .iter()
+            .filter(|c| regione.is_empty() || c.regione == regione)
+            .filter(|c| provincia.is_empty() || c.provincia == provincia || c.provincia_name == provincia);
+        if v.get("regioni").and_then(Value::as_bool).unwrap_or(false) {
+            let mut regioni: Vec<String> = sess.state.comuni.iter().map(|c| c.regione.clone()).filter(|r| !r.is_empty()).collect();
+            regioni.sort();
+            regioni.dedup();
+            return Ok(json!({"regioni": regioni}));
+        }
+        if v.get("province").and_then(Value::as_bool).unwrap_or(false) {
+            let mut province: Vec<(String, String)> = within.map(|c| (c.provincia.clone(), c.provincia_name.clone())).collect();
+            province.sort();
+            province.dedup();
+            let list: Vec<Value> = province.iter().map(|(sigla, name)| json!({"sigla": sigla, "name": name})).collect();
+            return Ok(json!({"province": list}));
+        }
+        let list: Vec<Value> = within
             .filter(|c| query.is_empty() || c.name.contains(&query) || c.provincia == query)
             .take(limit(v, 50))
             .map(crate::comune_json)
@@ -194,7 +212,13 @@ pub const COMMANDS: &[Command] = &[
         local: true,
         run: prefs_set,
     },
-    Command { id: "comune.list", label: "Comuni", params: "query, limit, refresh", local: true, run: comune_list },
+    Command {
+        id: "comune.list",
+        label: "Comuni",
+        params: "query, regione, provincia, limit, refresh; regioni=true lists regions, province=true the provinces",
+        local: true,
+        run: comune_list,
+    },
     Command { id: "street.search", label: "Search streets", params: "comune, query, limit", local: false, run: street_search },
     Command { id: "civico.list", label: "Civici of a street", params: "comune, street_egon, limit", local: false, run: civico_list },
     Command {

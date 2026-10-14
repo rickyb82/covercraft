@@ -9,10 +9,21 @@ use crate::status::Status;
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Comune {
     pub name: String,
+    /// The province code (`CA`).
     pub provincia: String,
     /// `netmap_<hash>`; empty when the comune has no TIM table (only other providers).
     pub table: String,
     pub istat: String,
+    /// From `istat`: the region and the province's full name.
+    pub regione: String,
+    pub provincia_name: String,
+}
+
+impl Comune {
+    /// `CAGLIARI (CA)`.
+    pub fn display(&self) -> String {
+        if self.provincia.is_empty() { self.name.clone() } else { format!("{} ({})", self.name, self.provincia) }
+    }
 }
 
 /// A street of a comune.

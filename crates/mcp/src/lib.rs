@@ -34,8 +34,8 @@ fn tools() -> Value {
     json!([
         {"name": "verify_coverage", "description": "The coverage report for a civico: every provider's technologies with a traffic light (covered / planned / not covered / unknown) and the raw cell, speeds and distances, Open Fiber staircases, radio bridges by distance and bearing, mobile cells. Give comune + via + civico, or egon. If more than one civico matches, the answer lists candidates: ask the person and call again with the chosen egon.",
          "inputSchema": {"type": "object", "properties": {"comune": comune, "via": {"type": "string", "description": "Street, with or without VIA/PIAZZA"}, "civico": {"type": "string", "description": "House number, e.g. 10, 10/A"}, "egon": {"type": "string", "description": "EGON civico code (skips the address search)"}, "user": {"type": "string", "description": "Who is asking (written in the log)"}, "log": {"type": "boolean", "description": "Record the verification (default: the preference)"}, "language": language}}},
-        {"name": "search_comune", "description": "Comuni known to the database whose name contains the text, with province and whether TIM's table exists.",
-         "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": limit}}},
+        {"name": "search_comune", "description": "Comuni known to the database whose name contains the text, with region, province and whether TIM's table exists. regioni=true lists the regions, province=true the provinces (of a region).",
+         "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "regione": {"type": "string"}, "provincia": {"type": "string", "description": "Province code or name"}, "regioni": {"type": "boolean"}, "province": {"type": "boolean"}, "limit": limit}}},
         {"name": "search_street", "description": "Streets of a comune whose name contains the words, with their EGON street code.",
          "inputSchema": {"type": "object", "properties": {"comune": comune, "query": {"type": "string"}, "limit": limit}, "required": ["comune", "query"]}},
         {"name": "list_civici", "description": "The civici of a street (by EGON street code from search_street), each with its EGON civico code.",
@@ -146,7 +146,7 @@ impl Server {
                 }
                 Ok(self.with_text(v, italian))
             }
-            "search_comune" => self.run("comune.list", pass_through(args, &["query", "limit"])),
+            "search_comune" => self.run("comune.list", pass_through(args, &["query", "regione", "provincia", "regioni", "province", "limit"])),
             "search_street" => self.run("street.search", pass_through(args, &["comune", "query", "limit"])),
             "list_civici" => self.run("civico.list", pass_through(args, &["comune", "street_egon", "limit"])),
             "radio_bridges" => self.run("radio.list", json!({})),

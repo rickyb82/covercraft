@@ -41,27 +41,63 @@ pub fn top_bar(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
             }
             ui.label(RichText::new("CoverCraft").size(18.0).strong().color(t.ui_text));
             ui.add_space(14.0);
-            let total = (ui.available_width() - 330.0).clamp(420.0, 900.0);
+            let total = (ui.available_width() - 560.0).clamp(420.0, 900.0);
             let w_comune = (total * 0.3).max(130.0);
             let w_via = (total * 0.5).max(180.0);
             let w_civico = (total * 0.2).clamp(80.0, 140.0);
-            // Comune, with local completion.
+            // Region and province: the cascade that narrows the comuni.
+            let any = app.tr("Any").to_string();
+            let regioni = app.regioni();
+            let shown = if app.form.regione.is_empty() { app.tr("Region").to_string() } else { app.form.regione.clone() };
+            egui::ComboBox::from_id_salt("regione").selected_text(shown).width(130.0).show_ui(ui, |ui| {
+                if ui.selectable_label(app.form.regione.is_empty(), &any).clicked() {
+                    app.form.regione.clear();
+                    app.form.provincia.clear();
+                }
+                for r in &regioni {
+                    if ui.selectable_label(&app.form.regione == r, r).clicked() {
+                        app.form.regione = r.clone();
+                        app.form.provincia.clear();
+                        app.form.comune.clear();
+                    }
+                }
+            });
+            let province = app.province();
+            let shown = if app.form.provincia.is_empty() { app.tr("Province").to_string() } else { app.form.provincia.clone() };
+            egui::ComboBox::from_id_salt("provincia").selected_text(shown).width(92.0).show_ui(ui, |ui| {
+                if ui.selectable_label(app.form.provincia.is_empty(), &any).clicked() {
+                    app.form.provincia.clear();
+                }
+                for (code, name) in &province {
+                    if ui.selectable_label(&app.form.provincia == code, format!("{code} · {name}")).clicked() {
+                        app.form.provincia = code.clone();
+                        app.form.comune.clear();
+                    }
+                }
+            });
+            // Comune, with local completion. A menu stays while the pointer is on it, so the
+            // click on a suggestion lands even though the field loses the focus on the press.
             let mut no_focus = false;
             let hint = app.tr("Type a comune").to_string();
             let comune = field(ui, t, "comune", &mut app.form.comune, &hint, w_comune, &mut no_focus);
-            let hits = if comune.has_focus() { app.comune_hits() } else { Vec::new() };
-            let exact = hits.iter().any(|c| c.name == core_norm(&app.form.comune));
+            let hits = if comune.has_focus() || app.form.menu_hover[0] { app.comune_hits() } else { Vec::new() };
+            let exact = hits.len() == 1 && hits[0].name == core_norm(&app.form.comune);
+            app.form.menu_hover[0] = false;
             if !hits.is_empty() && !exact {
-                let popup = egui::Popup::from_response(&comune).open(true).align(egui::RectAlign::BOTTOM_START).show(|ui| {
+                let menu = egui::Popup::from_response(&comune).open(true).align(egui::RectAlign::BOTTOM_START).show(|ui| {
                     ui.set_min_width(w_comune);
                     for c in &hits {
-                        if ui.selectable_label(false, format!("{} ({})", c.name, c.provincia)).clicked() {
+                        if ui.selectable_label(false, c.display()).clicked() {
                             app.form.comune = c.name.clone();
+                            if app.form.regione.is_empty() {
+                                app.form.regione = c.regione.clone();
+                            }
+                            app.form.provincia = c.provincia.clone();
                             app.form.focus_via = true;
                         }
                     }
                 });
-                let _ = popup;
+                app.form.menu_hover[0] = menu.is_some_and(|m| m.response.contains_pointer());
             }
             // Street, with suggestions from the database.
             let hint = app.tr("Type a street").to_string();
@@ -70,8 +106,11 @@ pub fn top_bar(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
             app.form.focus_via = focus_via;
             let streets = app.session.state().streets.clone();
             let picked = !app.form.street_egon.is_empty();
-            if via.has_focus() && !streets.is_empty() && !picked && app.form.via.trim().chars().count() >= 2 {
-                egui::Popup::from_response(&via).open(true).align(egui::RectAlign::BOTTOM_START).show(|ui| {
+            let show_streets =
+                (via.has_focus() || app.form.menu_hover[1]) && !streets.is_empty() && !picked && app.form.via.trim().chars().count() >= 2;
+            app.form.menu_hover[1] = false;
+            if show_streets {
+                let menu = egui::Popup::from_response(&via).open(true).align(egui::RectAlign::BOTTOM_START).show(|ui| {
                     ui.set_min_width(w_via);
                     for s in &streets {
                         if ui.selectable_label(false, s.display()).clicked() {
@@ -83,6 +122,7 @@ pub fn top_bar(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
                         }
                     }
                 });
+                app.form.menu_hover[1] = menu.is_some_and(|m| m.response.contains_pointer());
             }
             // Number, with the street's civici once a street was picked.
             let hint = app.tr("e.g. 10, 10/A").to_string();
@@ -90,11 +130,13 @@ pub fn top_bar(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
             let civico = field(ui, t, "civico", &mut app.form.civico, &hint, w_civico, &mut focus_civico);
             app.form.focus_civico = focus_civico;
             let civici = app.session.state().civici.clone();
-            if civico.has_focus() && picked && !app.picking && !civici.is_empty() {
+            let show_civici = (civico.has_focus() || app.form.menu_hover[2]) && picked && !app.picking && !civici.is_empty();
+            app.form.menu_hover[2] = false;
+            if show_civici {
                 let typed = crate::core::address::normalize_civico(&app.form.civico);
                 let shown: Vec<_> = civici.iter().filter(|c| typed.is_empty() || c.civico.starts_with(&typed)).take(14).collect();
                 if !shown.is_empty() && !(shown.len() == 1 && shown[0].civico == typed) {
-                    egui::Popup::from_response(&civico).open(true).align(egui::RectAlign::BOTTOM_START).show(|ui| {
+                    let menu = egui::Popup::from_response(&civico).open(true).align(egui::RectAlign::BOTTOM_START).show(|ui| {
                         ui.set_min_width(w_civico);
                         for c in shown {
                             if ui.selectable_label(false, &c.civico).clicked() {
@@ -103,6 +145,7 @@ pub fn top_bar(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
                             }
                         }
                     });
+                    app.form.menu_hover[2] = menu.is_some_and(|m| m.response.contains_pointer());
                 }
             }
             if primary_button(ui, t, Some(Icon::Verify), app.tr("Check coverage")).clicked() {
