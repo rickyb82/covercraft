@@ -1,0 +1,19 @@
+[package]
+name = "covercraft-remote"
+description = "CoverCraft remote session: the engine's state mirrored from a covercraft-cli serve server over HTTP"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+covercraft-engine = { workspace = true }
+ehttp = { workspace = true }
+serde_json = { workspace = true }
+
+[dependencies.web-time]
+workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,20 @@
+[package]
+name = "covercraft-engine"
+description = "CoverCraft engine: session, commands, the query worker, snapshots for the web app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+covercraft-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dependencies.web-time]
+workspace = true
+
+[lints]
+workspace = true

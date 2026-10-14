@@ -1,0 +1,17 @@
+[package]
+name = "covercraft-db"
+description = "CoverCraft database access: the netmap tables over MySQL (production) or SQLite (tests, demo files)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+covercraft-core = { workspace = true }
+serde_json = { workspace = true }
+mysql = { workspace = true }
+rusqlite = { workspace = true }
+
+[lints]
+workspace = true

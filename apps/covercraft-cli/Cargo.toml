@@ -1,0 +1,18 @@
+[package]
+name = "covercraft-cli"
+description = "CoverCraft headless: CLI, MCP server and the web app's server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+covercraft-engine = { workspace = true }
+covercraft-db = { workspace = true }
+covercraft-mcp = { workspace = true }
+covercraft-remote = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

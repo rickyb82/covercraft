@@ -1,0 +1,15 @@
+# CoverCraft behind your framework: `COVERCRAFT_TOKEN=... docker compose up -d`
+services:
+  covercraft:
+    build: .
+    image: covercraft
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7979:7979"   # put an HTTPS reverse proxy (or the framework) in front
+    environment:
+      COVERCRAFT_TOKEN: ${COVERCRAFT_TOKEN:?set the service token}
+      COVERCRAFT_LANG: it
+    volumes:
+      - covercraft-data:/data
+volumes:
+  covercraft-data:

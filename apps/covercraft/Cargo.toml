@@ -1,0 +1,17 @@
+[package]
+name = "covercraft"
+description = "CoverCraft desktop app: connectivity coverage checks on your own database"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+covercraft-ui-egui = { workspace = true }
+covercraft-db = { workspace = true }
+egui = { workspace = true }
+eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "wayland", "x11"] }
+
+[lints]
+workspace = true
