@@ -180,7 +180,13 @@ fn radio_list(sess: &mut Session, _: &Value) -> Result<Value> {
 }
 
 fn history_list(sess: &mut Session, v: &Value) -> Result<Value> {
-    let user = if v.get("all").and_then(Value::as_bool).unwrap_or(false) { String::new() } else { s(v, "user") };
+    // "Mine" is the session's user unless a `user` is named; `all` lists everyone's.
+    let user = if v.get("all").and_then(Value::as_bool).unwrap_or(false) {
+        String::new()
+    } else {
+        let named = s(v, "user");
+        if named.is_empty() { sess.user.clone() } else { named }
+    };
     sess.state.history = sess.history(&user, limit(v, 200));
     sess.touch();
     Ok(json!({"history": sess.state.history.iter().map(crate::history_json).collect::<Vec<_>>()}))
@@ -268,7 +274,13 @@ pub const COMMANDS: &[Command] = &[
     },
     Command { id: "report.get", label: "The last report", params: "", local: true, run: report_get },
     Command { id: "radio.list", label: "Radio bridges", params: "", local: false, run: radio_list },
-    Command { id: "history.list", label: "Past verifications (local history)", params: "user, all, limit", local: true, run: history_list },
+    Command {
+        id: "history.list",
+        label: "Past verifications (local history)",
+        params: "user (default: the session's), all, limit",
+        local: true,
+        run: history_list,
+    },
     Command { id: "history.open", label: "Open a past verification", params: "id", local: true, run: history_open },
     Command { id: "session.user", label: "Who is verifying (for the log)", params: "user", local: true, run: session_user },
     Command { id: "state.get", label: "Session state", params: "", local: true, run: state_get },

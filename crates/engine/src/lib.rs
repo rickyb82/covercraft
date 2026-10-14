@@ -582,6 +582,13 @@ mod tests {
         assert_eq!(v["history"][0]["request"]["egon"], "100300");
         let v = run(&mut s, "history.list", json!({"user": "nobody"})).unwrap();
         assert_eq!(v["history"].as_array().unwrap().len(), 0);
+        // "Mine" without a name is the session's user: another person sees none of anna's.
+        s.set_user("bruno");
+        let v = run(&mut s, "history.list", json!({"all": false})).unwrap();
+        assert_eq!(v["history"].as_array().unwrap().len(), 0, "bruno sees anna's verifications as his own");
+        let v = run(&mut s, "history.list", json!({"all": true})).unwrap();
+        assert_eq!(v["history"].as_array().unwrap().len(), 2);
+        s.set_user("anna");
         let v = run(&mut s, "history.list", json!({"all": true})).unwrap();
         let id = v["history"][1]["id"].as_i64().unwrap();
         assert_eq!(v["history"][1]["request"]["civico"], "10");
