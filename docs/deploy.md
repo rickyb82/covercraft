@@ -48,6 +48,21 @@ later starts are quick. Set the preference `geocode_url` to `http://nominatim:80
 Preferences → Geocoder, or `covercraft-cli prefs geocode_url=http://nominatim:8080`). Points
 found are remembered in `/data/geocache.json`, as are the ones set by hand in the report.
 
+A report note `Geocoding failed (geocoder http://nominatim:8080: Connection refused …)` means the
+server named in `geocode_url` is not answering: Nominatim is still importing (the API only listens
+once the import is done), the container is not running, or CoverCraft runs in another Compose
+project or network where the name `nominatim` does not resolve. Check with:
+
+```sh
+docker compose ps nominatim                # must be "running"
+docker compose logs -f nominatim           # the import, then "Starting nominatim" when ready
+curl -s http://127.0.0.1:8081/status       # "OK" from the host once the API is up
+docker exec covercraft getent hosts nominatim   # the name must resolve from CoverCraft's container
+```
+
+Until the server answers, the report shows the note and the civici can still be placed by hand
+(the coordinates fields under the map) or with `covercraft-cli verify … --lat … --lon …`.
+
 The map uses OpenStreetMap's tiles by default (`https://tile.openstreetmap.org/{z}/{x}/{y}.png`,
 see the OSMF tile usage policy for anything beyond light use); `tiles_url` points it at your
 own tile server.

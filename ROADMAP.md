@@ -26,6 +26,7 @@
 - Export of the report (PDF/print page).
 
 ## Progress log
+- 2026-10-14: the geocoder error names the server and the note explains what to check (Nominatim still importing, not running, name not resolving); coordinates by hand remain the fallback.
 
 | Date | What landed |
 |---|---|

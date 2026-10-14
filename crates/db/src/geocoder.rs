@@ -17,9 +17,11 @@ impl Nominatim {
         let url = format!("{}/search?{query}", self.base);
         let mut req = ehttp::Request::get(url);
         req.headers = ehttp::Headers::new(&[("Accept", "application/json"), ("User-Agent", concat!("covercraft/", env!("CARGO_PKG_VERSION")))]);
-        let r = ehttp::fetch_blocking(&req).map_err(|e| Error::Database(format!("geocoder: {e}")))?;
+        // "io: Connection refused (os error 111)" → "Connection refused (os error 111)", with the
+        // server named so the person knows which URL to check.
+        let r = ehttp::fetch_blocking(&req).map_err(|e| Error::Database(format!("geocoder {}: {}", self.base, e.trim_start_matches("io: "))))?;
         if !r.ok {
-            return Err(Error::Database(format!("geocoder: HTTP {} {}", r.status, r.status_text)));
+            return Err(Error::Database(format!("geocoder {}: HTTP {} {}", self.base, r.status, r.status_text)));
         }
         let text = String::from_utf8_lossy(&r.bytes);
         Ok(parse_answer(&text))
@@ -76,5 +78,20 @@ mod tests {
         assert!(dead.geocode(&GeocodeQuery::from_civico(&c)).is_err());
         assert!(crate::geocoder_factory()("").is_none());
         assert!(crate::geocoder_factory()("http://x").is_some());
+    }
+
+    #[test]
+    fn an_unreachable_server_names_itself_in_the_error() {
+        // Port 1 on the loopback refuses the connection at once.
+        let mut g = Nominatim::new("http://127.0.0.1:1/");
+        let q = GeocodeQuery {
+            street: "VIA ROMA 10".into(),
+            comune: "CAGLIARI".into(),
+            provincia: "CA".into(),
+            free_text: "VIA ROMA 10, CAGLIARI".into(),
+        };
+        let e = g.geocode(&q).unwrap_err().to_string();
+        assert!(e.contains("geocoder http://127.0.0.1:1:"), "{e}");
+        assert!(!e.contains("io: "), "{e}");
     }
 }
