@@ -341,6 +341,17 @@ mod tests {
     }
 
     #[test]
+    fn registries_are_read_whole() {
+        // `comuni` holds ~8000 rows in production: every one must come back, not a page.
+        let mut src = crate::demo_sqlite().unwrap();
+        for i in 0..3000 {
+            let name = format!("COMUNE{i:04}");
+            src.execute("INSERT INTO `comuni` (`comune`, `provincia`, `table_name`) VALUES (?, 'ZZ', '')", &[&name]).unwrap();
+        }
+        assert_eq!(src.comuni().unwrap().len(), 3005);
+    }
+
+    #[test]
     fn open_follows_the_configuration() {
         let demo = covercraft_core::config::DbConfig::default();
         assert!(crate::open(&demo, "").is_ok());

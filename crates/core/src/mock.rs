@@ -368,13 +368,19 @@ impl CoverageSource for MockSource {
                 out.push(Street { egon: c.egon_strada.clone(), particle: c.particle.clone(), name: c.street.clone() });
             }
         }
-        out.truncate(limit.min(limits::ROWS));
+        out.truncate(limit.min(limits::QUERY_ROWS));
         Ok(out)
     }
 
     fn civici(&mut self, comune: &Comune, street: &Street, limit: usize) -> Result<Vec<Civico>> {
         self.check()?;
-        Ok(self.civici.iter().filter(|c| c.comune == comune.name && c.egon_strada == street.egon).take(limit.min(limits::ROWS)).cloned().collect())
+        Ok(self
+            .civici
+            .iter()
+            .filter(|c| c.comune == comune.name && c.egon_strada == street.egon)
+            .take(limit.min(limits::QUERY_ROWS))
+            .cloned()
+            .collect())
     }
 
     fn resolve(&mut self, comune: &Comune, via: &str, civico: &str, limit: usize) -> Result<Vec<Civico>> {
@@ -385,7 +391,7 @@ impl CoverageSource for MockSource {
             .civici
             .iter()
             .filter(|c| c.comune == comune.name && words.iter().all(|w| c.street.contains(w.as_str())) && (n.is_empty() || c.civico == n))
-            .take(limit.min(limits::ROWS))
+            .take(limit.min(limits::QUERY_ROWS))
             .cloned()
             .collect())
     }
@@ -452,7 +458,7 @@ impl CoverageSource for MockSource {
             .cells
             .iter()
             .filter(|c| c.point().is_some_and(|p| (p.lat - lat).abs() <= half_deg && (p.lon - lon).abs() <= half_deg))
-            .take(limit.min(limits::ROWS))
+            .take(limit.min(limits::QUERY_ROWS))
             .cloned()
             .collect())
     }
@@ -475,7 +481,7 @@ impl CoverageSource for MockSource {
 
     fn history(&mut self, user: &str, limit: usize) -> Result<Vec<HistoryEntry>> {
         self.check()?;
-        Ok(self.log.iter().rev().filter(|e| user.is_empty() || e.user == user).take(limit.min(limits::ROWS)).cloned().collect())
+        Ok(self.log.iter().rev().filter(|e| user.is_empty() || e.user == user).take(limit.min(limits::QUERY_ROWS)).cloned().collect())
     }
 }
 

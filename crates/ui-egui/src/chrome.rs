@@ -49,7 +49,7 @@ pub fn top_bar(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
             let any = app.tr("Any").to_string();
             let regioni = app.regioni();
             let shown = if app.form.regione.is_empty() { app.tr("Region").to_string() } else { app.form.regione.clone() };
-            egui::ComboBox::from_id_salt("regione").selected_text(shown).width(130.0).show_ui(ui, |ui| {
+            egui::ComboBox::from_id_salt("regione").selected_text(shown).width(130.0).height(400.0).show_ui(ui, |ui| {
                 if ui.selectable_label(app.form.regione.is_empty(), &any).clicked() {
                     app.form.regione.clear();
                     app.form.provincia.clear();
@@ -64,7 +64,7 @@ pub fn top_bar(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
             });
             let province = app.province();
             let shown = if app.form.provincia.is_empty() { app.tr("Province").to_string() } else { app.form.provincia.clone() };
-            egui::ComboBox::from_id_salt("provincia").selected_text(shown).width(92.0).show_ui(ui, |ui| {
+            egui::ComboBox::from_id_salt("provincia").selected_text(shown).width(92.0).height(400.0).show_ui(ui, |ui| {
                 if ui.selectable_label(app.form.provincia.is_empty(), &any).clicked() {
                     app.form.provincia.clear();
                 }
@@ -86,16 +86,18 @@ pub fn top_bar(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
             if !hits.is_empty() && !exact {
                 let menu = egui::Popup::from_response(&comune).open(true).align(egui::RectAlign::BOTTOM_START).show(|ui| {
                     ui.set_min_width(w_comune);
-                    for c in &hits {
-                        if ui.selectable_label(false, c.display()).clicked() {
-                            app.form.comune = c.name.clone();
-                            if app.form.regione.is_empty() {
-                                app.form.regione = c.regione.clone();
+                    egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
+                        for c in &hits {
+                            if ui.selectable_label(false, c.display()).clicked() {
+                                app.form.comune = c.name.clone();
+                                if app.form.regione.is_empty() {
+                                    app.form.regione = c.regione.clone();
+                                }
+                                app.form.provincia = c.provincia.clone();
+                                app.form.focus_via = true;
                             }
-                            app.form.provincia = c.provincia.clone();
-                            app.form.focus_via = true;
                         }
-                    }
+                    });
                 });
                 app.form.menu_hover[0] = menu.is_some_and(|m| m.response.contains_pointer());
             }
@@ -112,15 +114,17 @@ pub fn top_bar(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
             if show_streets {
                 let menu = egui::Popup::from_response(&via).open(true).align(egui::RectAlign::BOTTOM_START).show(|ui| {
                     ui.set_min_width(w_via);
-                    for s in &streets {
-                        if ui.selectable_label(false, s.display()).clicked() {
-                            app.form.via = s.display();
-                            app.form.sent_query = app.form.via.trim().to_string();
-                            app.form.street_egon = s.egon.clone();
-                            app.form.focus_civico = true;
-                            app.run("civico.list", json!({"comune": app.form.comune.trim(), "street_egon": s.egon, "limit": 300}));
+                    egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
+                        for s in &streets {
+                            if ui.selectable_label(false, s.display()).clicked() {
+                                app.form.via = s.display();
+                                app.form.sent_query = app.form.via.trim().to_string();
+                                app.form.street_egon = s.egon.clone();
+                                app.form.focus_civico = true;
+                                app.run("civico.list", json!({"comune": app.form.comune.trim(), "street_egon": s.egon}));
+                            }
                         }
-                    }
+                    });
                 });
                 app.form.menu_hover[1] = menu.is_some_and(|m| m.response.contains_pointer());
             }
@@ -134,16 +138,18 @@ pub fn top_bar(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
             app.form.menu_hover[2] = false;
             if show_civici {
                 let typed = crate::core::address::normalize_civico(&app.form.civico);
-                let shown: Vec<_> = civici.iter().filter(|c| typed.is_empty() || c.civico.starts_with(&typed)).take(14).collect();
+                let shown: Vec<_> = civici.iter().filter(|c| typed.is_empty() || c.civico.starts_with(&typed)).collect();
                 if !shown.is_empty() && !(shown.len() == 1 && shown[0].civico == typed) {
                     let menu = egui::Popup::from_response(&civico).open(true).align(egui::RectAlign::BOTTOM_START).show(|ui| {
                         ui.set_min_width(w_civico);
-                        for c in shown {
-                            if ui.selectable_label(false, &c.civico).clicked() {
-                                app.form.civico = c.civico.clone();
-                                app.verify_egon(&c.egon);
+                        egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
+                            for c in shown {
+                                if ui.selectable_label(false, &c.civico).clicked() {
+                                    app.form.civico = c.civico.clone();
+                                    app.verify_egon(&c.egon);
+                                }
                             }
-                        }
+                        });
                     });
                     app.form.menu_hover[2] = menu.is_some_and(|m| m.response.contains_pointer());
                 }

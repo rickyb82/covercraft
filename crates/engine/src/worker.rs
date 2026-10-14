@@ -141,7 +141,7 @@ impl Inner {
                     if via.trim().is_empty() {
                         return Err(Error::Invalid("via (empty)".into()));
                     }
-                    let mut found = self.source()?.resolve(&c, &via, &civico, 50)?;
+                    let mut found = self.source()?.resolve(&c, &via, &civico, covercraft_core::limits::QUERY_ROWS)?;
                     match found.len() {
                         0 => {
                             return Err(Error::NotFound(format!(

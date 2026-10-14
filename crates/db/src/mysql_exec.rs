@@ -59,7 +59,7 @@ impl Executor for MySqlExecutor {
         let columns: Vec<String> = rows.first().map(|r| r.columns_ref().iter().map(|c| c.name_str().into_owned()).collect()).unwrap_or_default();
         let rows = rows
             .into_iter()
-            .take(covercraft_core::limits::ROWS * 4)
+            .take(covercraft_core::limits::QUERY_ROWS)
             .map(|r| {
                 let n = r.len();
                 let mut r = r;

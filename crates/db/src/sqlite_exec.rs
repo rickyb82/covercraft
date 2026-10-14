@@ -46,7 +46,7 @@ impl Executor for SqliteExecutor {
                 row.push(r.get_ref(i).ok().and_then(cell));
             }
             out.push(row);
-            if out.len() >= covercraft_core::limits::ROWS * 4 {
+            if out.len() >= covercraft_core::limits::QUERY_ROWS {
                 break;
             }
         }

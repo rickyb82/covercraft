@@ -44,6 +44,8 @@ pub mod limits {
     pub const TEXT: usize = 4_000;
     /// Most rows read for one answer (suggestions, scale, cells, history).
     pub const ROWS: usize = 500;
+    /// Most rows a single statement may return (registries: `comuni` and `istat` hold ~8000).
+    pub const QUERY_ROWS: usize = 50_000;
     /// Most radio bridges listed in a report.
     pub const BRIDGES: usize = 200;
     /// Most points of a street polyline kept.

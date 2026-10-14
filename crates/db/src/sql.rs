@@ -24,7 +24,7 @@ pub fn table_ident(name: &str) -> Result<String> {
 }
 
 fn limit(n: usize) -> usize {
-    n.clamp(1, limits::ROWS)
+    n.clamp(1, limits::QUERY_ROWS)
 }
 
 fn text(row: &[Option<String>], i: usize) -> String {
@@ -239,7 +239,7 @@ impl CoverageSource for SqlSource {
         if comune.is_none() {
             // Any comune's TIM table: expensive, so only when nothing else knows the code.
             let comuni = self.comuni()?;
-            for c in comuni.iter().filter(|c| !c.table.is_empty()).take(limits::ROWS) {
+            for c in comuni.iter().filter(|c| !c.table.is_empty()) {
                 let Ok(table) = table_ident(&c.table) else { continue };
                 if !self.table_exists(&c.table) {
                     continue;

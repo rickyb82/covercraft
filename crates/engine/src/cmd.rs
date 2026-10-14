@@ -110,7 +110,9 @@ fn street_search(sess: &mut Session, v: &Value) -> Result<Value> {
     if comune.is_empty() {
         return Err(Error::Param("`comune` is required".into()));
     }
-    Ok(json!({"job": sess.submit("street.search", JobKind::Streets { comune, query: s(v, "query"), limit: limit(v, 30) })?}))
+    Ok(
+        json!({"job": sess.submit("street.search", JobKind::Streets { comune, query: s(v, "query"), limit: limit(v, covercraft_core::limits::QUERY_ROWS) })?}),
+    )
 }
 
 fn civico_list(sess: &mut Session, v: &Value) -> Result<Value> {
@@ -119,7 +121,7 @@ fn civico_list(sess: &mut Session, v: &Value) -> Result<Value> {
     if comune.is_empty() || street_egon.is_empty() {
         return Err(Error::Param("`comune` and `street_egon` are required".into()));
     }
-    Ok(json!({"job": sess.submit("civico.list", JobKind::Civici { comune, street_egon, limit: limit(v, 200) })?}))
+    Ok(json!({"job": sess.submit("civico.list", JobKind::Civici { comune, street_egon, limit: limit(v, covercraft_core::limits::QUERY_ROWS) })?}))
 }
 
 fn address_resolve(sess: &mut Session, v: &Value) -> Result<Value> {
@@ -128,7 +130,9 @@ fn address_resolve(sess: &mut Session, v: &Value) -> Result<Value> {
     if comune.is_empty() || via.is_empty() {
         return Err(Error::Param("`comune` and `via` are required".into()));
     }
-    Ok(json!({"job": sess.submit("address.resolve", JobKind::Resolve { comune, via, civico: s(v, "civico"), limit: limit(v, 50) })?}))
+    Ok(
+        json!({"job": sess.submit("address.resolve", JobKind::Resolve { comune, via, civico: s(v, "civico"), limit: limit(v, covercraft_core::limits::QUERY_ROWS) })?}),
+    )
 }
 
 fn coverage_verify(sess: &mut Session, v: &Value) -> Result<Value> {

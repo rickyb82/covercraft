@@ -30,7 +30,7 @@ pub struct Server {
 fn tools() -> Value {
     let comune = json!({"type": "string", "description": "Comune name as in the tables (upper case accepted), optionally with the province: \"CAGLIARI\", \"Cagliari (CA)\""});
     let language = json!({"type": "string", "enum": ["en", "it"], "description": "Language of the text answer (default: the preference)"});
-    let limit = json!({"type": "integer", "minimum": 1, "maximum": 500});
+    let limit = json!({"type": "integer", "minimum": 1, "description": "Optional cap on the rows returned (default: all)"});
     json!([
         {"name": "verify_coverage", "description": "The coverage report for a civico: every provider's technologies with a traffic light (covered / planned / not covered / unknown) and the raw cell, speeds and distances, Open Fiber staircases, radio bridges by distance and bearing, mobile cells. Give comune + via + civico, or egon. If more than one civico matches, the answer lists candidates: ask the person and call again with the chosen egon.",
          "inputSchema": {"type": "object", "properties": {"comune": comune, "via": {"type": "string", "description": "Street, with or without VIA/PIAZZA"}, "civico": {"type": "string", "description": "House number, e.g. 10, 10/A"}, "egon": {"type": "string", "description": "EGON civico code (skips the address search)"}, "user": {"type": "string", "description": "Who is asking (written in the log)"}, "log": {"type": "boolean", "description": "Record the verification (default: the preference)"}, "language": language}}},

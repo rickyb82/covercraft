@@ -224,7 +224,7 @@ impl CoverApp {
         }
         self.form.sent_query = q.clone();
         self.form.street_egon.clear();
-        self.run("street.search", json!({"comune": self.form.comune.trim(), "query": q, "limit": 12}));
+        self.run("street.search", json!({"comune": self.form.comune.trim(), "query": q}));
     }
 
     /// The comuni of the chosen region and province.
@@ -270,17 +270,10 @@ impl CoverApp {
         let q = core::address::normalize(&self.form.comune);
         let within = self.comuni_within();
         if q.is_empty() {
-            return if self.form.provincia.is_empty() { Vec::new() } else { within.into_iter().take(12).collect() };
+            return if self.form.provincia.is_empty() { Vec::new() } else { within };
         }
-        let mut out: Vec<core::model::Comune> = within.iter().filter(|c| c.name.starts_with(&q)).take(10).cloned().collect();
-        if out.len() < 10 {
-            for c in within.iter().filter(|c| !c.name.starts_with(&q) && c.name.contains(&q)) {
-                if out.len() >= 10 {
-                    break;
-                }
-                out.push(c.clone());
-            }
-        }
+        let mut out: Vec<core::model::Comune> = within.iter().filter(|c| c.name.starts_with(&q)).cloned().collect();
+        out.extend(within.iter().filter(|c| !c.name.starts_with(&q) && c.name.contains(&q)).cloned());
         out
     }
 

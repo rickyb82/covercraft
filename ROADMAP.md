@@ -28,5 +28,6 @@
 
 | Date | What landed |
 |---|---|
+| 2026-10-14 | No limits on comuni, streets and civici: statements may return 50 000 rows (the previous 2 000 cut the comuni list at the letter B), suggestion menus scroll, `comune.list`/`street.search`/`civico.list` return everything unless `limit` is given |
 | 2026-10-14 | Region → province → comune cascade in the address bar (`istat` names on every comune, `comune.list` filters and `regioni`/`province` listings for the CLI and MCP); suggestion menus stay open while the pointer is on them, so a click on a suggestion lands |
 | 2026-10-14 | First complete version: core model and interpretation, SQL on MySQL/SQLite with the schema-derived test database, engine with commands and worker, egui interface (address bar with completion, report with radar, history, bridges, settings), MCP server, remote session, desktop/CLI/web apps, Docker, docs |
