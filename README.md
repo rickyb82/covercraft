@@ -44,7 +44,9 @@ nelle risposte.
 5. Ogni stato è un semaforo (coperto / pianificato / non coperto / non noto) **con accanto il
    valore originale della cella**; le parole che il semaforo non conosce si insegnano nelle
    impostazioni (regole `VALORE=stato`).
-6. La verifica viene registrata in `requests_log` con l'utente, e lo storico si riapre.
+6. La verifica finisce nello storico locale (`history.jsonl` accanto alla configurazione) con
+   l'utente, e si riapre senza interrogare di nuovo; l'utente del database può essere in sola
+   lettura (la scrittura in `requests_log` è un'opzione, spenta).
 
 ## Struttura
 

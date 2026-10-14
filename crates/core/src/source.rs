@@ -27,6 +27,8 @@ pub trait CoverageSource: Send {
     fn own(&mut self, egon: &str) -> Result<Vec<OwnService>>;
     /// The street's polyline text (`sirius_egon_polylines`).
     fn polyline(&mut self, egon_strada: &str) -> Result<Option<String>>;
+    /// Coordinates of other Open Fiber buildings on the same street (`COORDINATE_BUILDING`).
+    fn street_coordinates(&mut self, egon_strada: &str, limit: usize) -> Result<Vec<String>>;
     fn bridges(&mut self) -> Result<Vec<Bridge>>;
     /// Cells within `half_deg` degrees of the point (a bounding box; the caller measures).
     fn cells(&mut self, lat: f64, lon: f64, half_deg: f64, limit: usize) -> Result<Vec<Cell>>;

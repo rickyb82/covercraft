@@ -447,6 +447,18 @@ impl CoverageSource for MockSource {
         Ok(self.polylines.iter().find(|(e, _)| e == egon_strada).map(|(_, p)| p.clone()))
     }
 
+    fn street_coordinates(&mut self, egon_strada: &str, limit: usize) -> Result<Vec<String>> {
+        self.check()?;
+        let egons: Vec<&str> = self.civici.iter().filter(|c| c.egon_strada == egon_strada).map(|c| c.egon.as_str()).collect();
+        Ok(self
+            .openfiber
+            .iter()
+            .filter(|(e, r)| egons.contains(&e.as_str()) && !r.coordinates.is_empty())
+            .map(|(_, r)| r.coordinates.clone())
+            .take(limit)
+            .collect())
+    }
+
     fn bridges(&mut self) -> Result<Vec<Bridge>> {
         self.check()?;
         Ok(self.bridges.clone())

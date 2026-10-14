@@ -154,6 +154,7 @@ fn header(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens, r: &Report) {
                     let src = match r.point_source.as_str() {
                         "openfiber" => app.tr("from Open Fiber"),
                         "polyline" => app.tr("from the street"),
+                        "street" => app.tr("from the street's buildings"),
                         _ => "",
                     };
                     format!("{}: {:.5}, {:.5} ({src})", app.tr("Coordinates"), p.lat, p.lon)

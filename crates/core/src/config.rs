@@ -100,8 +100,10 @@ pub struct Preferences {
     pub language: String,
     /// `light`, `dark` or empty (the system's).
     pub theme: String,
-    /// Record verifications in `requests_log`.
+    /// Keep a local history of verifications (a file next to the configuration).
     pub log_requests: bool,
+    /// Also write verifications to the database's `requests_log` (needs INSERT rights).
+    pub log_to_database: bool,
     /// Reach of a radio bridge by band (`fascia`), km.
     pub radio_reach_km: BTreeMap<String, f64>,
     /// Bridges listed in a report (the ones in reach always are).
@@ -120,6 +122,7 @@ impl Default for Preferences {
             language: String::new(),
             theme: String::new(),
             log_requests: true,
+            log_to_database: false,
             radio_reach_km: [("A", 20.0), ("B", 12.0), ("C", 7.0), ("D", 4.0)].into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             max_bridges: 8,
             cells: true,
@@ -155,6 +158,7 @@ impl Preferences {
                     };
                 }
                 "log_requests" => self.log_requests = as_bool(val)?,
+                "log_to_database" => self.log_to_database = as_bool(val)?,
                 "cells" => self.cells = as_bool(val)?,
                 "max_bridges" => self.max_bridges = as_count(val, 200)?,
                 "max_cells" => self.max_cells = as_count(val, 500)?,

@@ -20,7 +20,6 @@ pub enum JobKind {
     Resolve { comune: String, via: String, civico: String, limit: usize },
     Verify { comune: String, via: String, civico: String, egon: String, user: String, prefs: Preferences, log: bool, request: Value },
     Bridges,
-    History { user: String, limit: usize },
 }
 
 /// What a job answers.
@@ -33,9 +32,9 @@ pub enum Output {
     Civici(Vec<Civico>),
     /// More than one civico matched: the person picks.
     Candidates(Vec<Civico>),
-    Report(Box<Report>),
+    /// The report, with the request it answers (`user` inside) for the local history.
+    Report(Box<Report>, Value),
     Bridges(Vec<Bridge>),
-    History(Vec<HistoryEntry>),
 }
 
 pub struct Job {
@@ -170,16 +169,15 @@ impl Inner {
                 if log {
                     let answer = crate::report_json(&r);
                     if let Err(e) = self.source()?.log(&user, &request, &answer) {
-                        // A failed log never hides the answer.
+                        // A failed database log never hides the answer.
                         let mut r2 = r.clone();
                         r2.notes.push(format!("log_failed: {e}"));
-                        return Ok(Output::Report(Box::new(r2)));
+                        return Ok(Output::Report(Box::new(r2), request));
                     }
                 }
-                Ok(Output::Report(Box::new(r)))
+                Ok(Output::Report(Box::new(r), request))
             }
             JobKind::Bridges => Ok(Output::Bridges(self.source()?.bridges()?)),
-            JobKind::History { user, limit } => Ok(Output::History(self.source()?.history(&user, limit)?)),
         }
     }
 }

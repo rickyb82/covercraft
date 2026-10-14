@@ -329,6 +329,13 @@ mod tests {
         let marconi = src.civico(Some(&cagliari), "100300").unwrap().unwrap();
         let rm = covercraft_core::report::gather(&mut src, &cagliari, &marconi, &prefs).unwrap();
         assert_eq!(rm.point_source, "polyline");
+        assert_eq!(src.street_coordinates("10001", 10).unwrap().len(), 3);
+        // No polyline and no own coordinates: the street's other buildings place the civico.
+        src.execute("DELETE FROM `sirius_egon_polylines` WHERE `egon_strada` = '10001'", &[]).unwrap();
+        src.execute("UPDATE `openfiber` SET `COORDINATE_BUILDING` = '' WHERE `ID_EGON_CIVICO` = '100014'", &[]).unwrap();
+        let c14 = src.civico(Some(&cagliari), "100014").unwrap().unwrap();
+        let r14 = covercraft_core::report::gather(&mut src, &cagliari, &c14, &prefs).unwrap();
+        assert_eq!(r14.point_source, "street");
         assert!(rm.of(Provider::Own).any(|s| s.technology == "Fibra dedicata"));
         assert!(rm.of(Provider::Fastweb).any(|s| s.technology == "GPON (indirizzo)" && s.status == Status::Planned));
         src.log("anna", &serde_json::json!({"egon": "100010"}), &serde_json::json!({"best": "FTTH"})).unwrap();

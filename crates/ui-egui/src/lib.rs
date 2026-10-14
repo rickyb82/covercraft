@@ -154,6 +154,7 @@ impl CoverApp {
                 } else {
                     self.picking = false;
                     self.expanded.clear();
+                    self.reload_history();
                     if let Some(c) = v.get("civico").and_then(|c| c.get("display")).and_then(Value::as_str) {
                         self.toast(self.language.fill("Verified {address}", &[("address", c)]));
                     }

@@ -19,7 +19,7 @@ TIM/FiberCop (FTTH, FTTC, ADSL, SHDSL, ULL, dedicated fibre), Open Fiber (FTTH b
 network, radio bridges by distance and bearing, and mobile cells. Workflow: verify_coverage with comune, via and civico (or an EGON civico code). \
 If it answers with candidates, show them and verify again with the chosen egon. Use search_comune / search_street / list_civici to help the person \
 spell the address as the tables do. Every status keeps the raw cell next to the traffic light: when in doubt, show the raw value. \
-Reports are logged in the operator's database with the user's name; pass `user` when you know who is asking.";
+Verifications are kept in a local history with the user's name; pass `user` when you know who is asking.";
 
 type ToolResult = Result<Value, String>;
 
@@ -42,7 +42,7 @@ fn tools() -> Value {
          "inputSchema": {"type": "object", "properties": {"comune": comune, "street_egon": {"type": "string"}, "limit": limit}, "required": ["comune", "street_egon"]}},
         {"name": "radio_bridges", "description": "The operator's radio bridges: name, coordinates, altitude, state, band.",
          "inputSchema": {"type": "object", "properties": {}}},
-        {"name": "history", "description": "Past verifications from the log, newest first (summary, user, date).",
+        {"name": "history", "description": "Past verifications from the local history, newest first (summary, user, date).",
          "inputSchema": {"type": "object", "properties": {"user": {"type": "string"}, "all": {"type": "boolean", "description": "Everyone's (default: the session's user)"}, "limit": limit}}},
         {"name": "open_history", "description": "The full report of a past verification (id from history).",
          "inputSchema": {"type": "object", "properties": {"id": {"type": "integer"}, "language": language}, "required": ["id"]}},
@@ -55,7 +55,7 @@ fn tools() -> Value {
         {"name": "get_preferences", "description": "Preferences: language, theme, logging, radio reach by band (km), limits, wording rules.",
          "inputSchema": {"type": "object", "properties": {}}},
         {"name": "set_preferences", "description": "Change preferences (only the fields given). Wording rules map a raw cell value (or PREFIX*) to covered / planned / not_covered / unknown.",
-         "inputSchema": {"type": "object", "properties": {"language": {"type": "string", "enum": ["en", "it", "system"]}, "theme": {"type": "string", "enum": ["light", "dark", "system"]}, "log_requests": {"type": "boolean"}, "radio_reach_km": {"type": "object", "description": "Band → km, e.g. {\"A\": 20, \"D\": 4}"}, "max_bridges": limit, "cells": {"type": "boolean"}, "cells_radius_km": {"type": "number"}, "max_cells": limit, "rules": {"type": "array", "items": {"type": "object", "properties": {"value": {"type": "string"}, "status": {"type": "string", "enum": ["covered", "planned", "not_covered", "unknown"]}}, "required": ["value", "status"]}}}}},
+         "inputSchema": {"type": "object", "properties": {"language": {"type": "string", "enum": ["en", "it", "system"]}, "theme": {"type": "string", "enum": ["light", "dark", "system"]}, "log_requests": {"type": "boolean", "description": "Keep a local history of verifications"}, "log_to_database": {"type": "boolean", "description": "Also write them to the database requests_log (needs INSERT rights; default off)"}, "radio_reach_km": {"type": "object", "description": "Band → km, e.g. {\"A\": 20, \"D\": 4}"}, "max_bridges": limit, "cells": {"type": "boolean"}, "cells_radius_km": {"type": "number"}, "max_cells": limit, "rules": {"type": "array", "items": {"type": "object", "properties": {"value": {"type": "string"}, "status": {"type": "string", "enum": ["covered", "planned", "not_covered", "unknown"]}}, "required": ["value", "status"]}}}}},
     ])
 }
 

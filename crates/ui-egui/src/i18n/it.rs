@@ -114,7 +114,11 @@ pub(super) fn translate(text: &str) -> Option<&'static str> {
         "Password not set" => "Password non impostata",
         "leave empty to keep it" => "lascia vuoto per non cambiarla",
         "Preferences" => "Preferenze",
-        "Record verifications in the log" => "Registra le verifiche nel log",
+        "Keep a local history of verifications" => "Conserva lo storico delle verifiche in locale",
+        "Also write them to the database log (requests_log; needs INSERT rights)" => {
+            "Scrivile anche nel log del database (requests_log; serve il permesso INSERT)"
+        }
+        "from the street's buildings" => "dagli edifici della via",
         "Radio reach by band (km)" => "Portata dei ponti per fascia (km)",
         "Bridges listed" => "Ponti elencati",
         "Mobile cells around the address" => "Celle mobili intorno all'indirizzo",

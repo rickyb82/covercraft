@@ -334,6 +334,14 @@ impl CoverageSource for SqlSource {
         Ok(t.rows.first().and_then(|r| r.first().cloned().flatten()).map(|p| p.chars().take(limits::POINTS * 24).collect()))
     }
 
+    fn street_coordinates(&mut self, egon_strada: &str, limit_n: usize) -> Result<Vec<String>> {
+        let sql = format!(
+            "SELECT `COORDINATE_BUILDING` FROM `openfiber` WHERE `ID_EGON_STRADA` = ? AND `COORDINATE_BUILDING` IS NOT NULL AND `COORDINATE_BUILDING` <> '' LIMIT {}",
+            limit(limit_n)
+        );
+        Ok(self.exec.query(&sql, &[egon_strada.trim()])?.rows.iter().map(|r| text(r, 0)).filter(|c| !c.is_empty()).collect())
+    }
+
     fn bridges(&mut self) -> Result<Vec<Bridge>> {
         let sql = format!(
             "SELECT `id_ponte`, `nome`, `lat`, `lon`, `alt`, `stato`, `descrizione`, `fascia` FROM `radio_table` ORDER BY `id_ponte` LIMIT {}",

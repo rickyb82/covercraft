@@ -461,12 +461,15 @@ pub struct Inputs {
     pub fastweb: FastwebRows,
     pub own: Vec<OwnService>,
     pub polyline: Option<String>,
+    /// Coordinates of other buildings on the street, when the civico has none.
+    pub street_points: Vec<String>,
     pub bridges: Vec<Bridge>,
     pub cells: Vec<Cell>,
 }
 
-/// The civico's point: Open Fiber's building coordinates, else the street's polyline.
-pub fn locate(openfiber: &[OpenFiberRow], polyline: Option<&str>) -> (Option<Point>, &'static str) {
+/// The civico's point: Open Fiber's building coordinates, else the street's polyline, else
+/// the middle of the other Open Fiber buildings on the street.
+pub fn locate(openfiber: &[OpenFiberRow], polyline: Option<&str>, street_points: &[String]) -> (Option<Point>, &'static str) {
     if let Some(p) = openfiber.iter().find_map(|r| geo::parse_point(&r.coordinates)) {
         return (Some(p), "openfiber");
     }
@@ -474,6 +477,14 @@ pub fn locate(openfiber: &[OpenFiberRow], polyline: Option<&str>) -> (Option<Poi
         && let Some(p) = geo::midpoint(&geo::parse_polyline(text))
     {
         return (Some(p), "polyline");
+    }
+    let pts: Vec<Point> = street_points.iter().filter_map(|s| geo::parse_point(s)).take(limits::ROWS).collect();
+    if !pts.is_empty() {
+        let n = pts.len() as f64;
+        let (lat, lon) = pts.iter().fold((0.0, 0.0), |(a, b), p| (a + p.lat, b + p.lon));
+        if let Some(p) = Point::new(lat / n, lon / n) {
+            return (Some(p), "street");
+        }
     }
     (None, "none")
 }
@@ -500,7 +511,7 @@ pub fn build(inputs: Inputs, prefs: &Preferences) -> Report {
     }
     r.services.extend(fw);
     r.services.extend(own_services(&inputs.own, prefs));
-    let (point, source) = locate(&inputs.openfiber, inputs.polyline.as_deref());
+    let (point, source) = locate(&inputs.openfiber, inputs.polyline.as_deref(), &inputs.street_points);
     r.point = point;
     r.point_source = source.into();
     match point {
@@ -524,12 +535,26 @@ pub fn gather(source: &mut dyn CoverageSource, comune: &Comune, civico: &Civico,
     let xgspon_pops = if openfiber.is_empty() { Vec::new() } else { source.xgspon_pops()? };
     let fastweb = source.fastweb(egon)?;
     let own = source.own(egon)?;
-    let polyline = if openfiber.iter().any(|r| !r.coordinates.trim().is_empty()) || civico.egon_strada.trim().is_empty() {
+    let strada = civico.egon_strada.trim();
+    let located = openfiber.iter().any(|r| geo::parse_point(&r.coordinates).is_some());
+    let polyline = if located || strada.is_empty() {
         None
     } else {
-        source.polyline(civico.egon_strada.trim())?
+        // The street code may be written with or without leading zeros in the two tables.
+        match source.polyline(strada)? {
+            Some(p) => Some(p),
+            None => {
+                let bare = strada.trim_start_matches('0');
+                if bare != strada && !bare.is_empty() { source.polyline(bare)? } else { None }
+            }
+        }
     };
-    let (point, _) = locate(&openfiber, polyline.as_deref());
+    let street_points = if located || strada.is_empty() || polyline.as_deref().is_some_and(|p| !geo::parse_polyline(p).is_empty()) {
+        Vec::new()
+    } else {
+        source.street_coordinates(strada, limits::ROWS)?
+    };
+    let (point, _) = locate(&openfiber, polyline.as_deref(), &street_points);
     let bridges = if point.is_some() { source.bridges()? } else { Vec::new() };
     let cells = match point {
         Some(p) if prefs.cells => {
@@ -538,7 +563,7 @@ pub fn gather(source: &mut dyn CoverageSource, comune: &Comune, civico: &Civico,
         }
         _ => Vec::new(),
     };
-    Ok(build(Inputs { civico: civico.clone(), tim, openfiber, statuses, xgspon_pops, fastweb, own, polyline, bridges, cells }, prefs))
+    Ok(build(Inputs { civico: civico.clone(), tim, openfiber, statuses, xgspon_pops, fastweb, own, polyline, street_points, bridges, cells }, prefs))
 }
 
 #[cfg(test)]
@@ -639,6 +664,9 @@ mod tests {
         assert!(r.best().is_none());
         let r2 = build(Inputs::default(), &prefs);
         assert!(r2.notes.contains(&"no_point".to_string()));
-        assert_eq!(locate(&[], None).1, "none");
+        assert_eq!(locate(&[], None, &[]).1, "none");
+        let (p, src) = locate(&[], Some("garbage"), &["39.20,9.10".into(), "39.22,9.12".into(), "nope".into()]);
+        assert_eq!(src, "street");
+        assert!((p.unwrap().lat - 39.21).abs() < 1e-9);
     }
 }

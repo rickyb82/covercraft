@@ -19,6 +19,7 @@ pub struct SettingsForm {
     pub path: String,
     pub result: String,
     pub log_requests: bool,
+    pub log_to_database: bool,
     pub reach: Vec<(String, String)>,
     pub max_bridges: String,
     pub cells: bool,
@@ -39,6 +40,7 @@ impl SettingsForm {
         self.password.clear();
         let p = &c.preferences;
         self.log_requests = p.log_requests;
+        self.log_to_database = p.log_to_database;
         self.reach =
             ["A", "B", "C", "D"].iter().map(|b| ((*b).to_string(), p.radio_reach_km.get(*b).map(|v| format!("{v}")).unwrap_or_default())).collect();
         self.max_bridges = p.max_bridges.to_string();
@@ -152,8 +154,10 @@ pub fn show(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
             ui.add_space(12.0);
             let mut save_prefs = false;
             section(ui, t, app.tr("Preferences"), |ui| {
-                let l = app.tr("Record verifications in the log").to_string();
+                let l = app.tr("Keep a local history of verifications").to_string();
                 ui.checkbox(&mut app.settings.log_requests, l);
+                let l = app.tr("Also write them to the database log (requests_log; needs INSERT rights)").to_string();
+                ui.checkbox(&mut app.settings.log_to_database, l);
                 ui.add_space(6.0);
                 ui.label(RichText::new(app.tr("Radio reach by band (km)")).color(t.muted));
                 ui.horizontal(|ui| {
@@ -194,7 +198,7 @@ pub fn show(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
                 let rules: Vec<Value> =
                     f.rules.lines().filter_map(|l| l.split_once('=').map(|(v, s)| json!({"value": v.trim(), "status": s.trim()}))).collect();
                 let params = json!({
-                    "log_requests": f.log_requests, "radio_reach_km": reach, "max_bridges": f.max_bridges.trim(), "cells": f.cells,
+                    "log_requests": f.log_requests, "log_to_database": f.log_to_database, "radio_reach_km": reach, "max_bridges": f.max_bridges.trim(), "cells": f.cells,
                     "cells_radius_km": f.cells_radius.trim(), "max_cells": f.max_cells.trim(), "rules": rules,
                 });
                 if app.run("prefs.set", params).is_some() {

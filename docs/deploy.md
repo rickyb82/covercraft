@@ -26,7 +26,8 @@ docker exec -it covercraft covercraft-cli db --kind mysql --host 192.168.10.24 -
 ```
 
 The settings land in `/data/config.json`, the password in `/data/secrets.json` (owner-only).
-The MySQL user needs `SELECT` on the schema and `INSERT` on `requests_log`.
+A read-only MySQL user is enough: verifications are kept in `/data/history.jsonl`, and the
+database's `requests_log` is written only if the preference `log_to_database` is on.
 
 ## API
 

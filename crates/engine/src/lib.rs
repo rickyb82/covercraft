@@ -112,11 +112,28 @@ pub trait CoverSession {
     }
 }
 
+/// Most history entries kept.
+const MAX_HISTORY: usize = 5_000;
+
+fn history_path(p: &Paths) -> std::path::PathBuf {
+    p.config.with_file_name("history.jsonl")
+}
+
+/// Reads the history file, newest first (a broken line is skipped).
+fn load_history(path: &std::path::Path) -> Vec<HistoryEntry> {
+    let Ok(text) = std::fs::read_to_string(path) else { return Vec::new() };
+    let mut out: Vec<HistoryEntry> = text.lines().rev().take(MAX_HISTORY).filter_map(|l| serde_json::from_str(l).ok()).collect();
+    out.sort_by_key(|h| std::cmp::Reverse(h.id));
+    out
+}
+
 /// The local session.
 pub struct Session {
     config: Config,
     secrets: Secrets,
     paths: Option<Paths>,
+    /// The local history of verifications (`history.jsonl` next to the configuration).
+    history: Vec<HistoryEntry>,
     worker: worker::Worker,
     state: State,
     user: String,
@@ -134,10 +151,12 @@ impl Session {
             None => (Config::default(), Secrets::default()),
         };
         let worker = worker::Worker::start(factory, config.db.clone(), secrets.db_password.clone());
+        let history = paths.as_ref().map(|p| load_history(&history_path(p))).unwrap_or_default();
         Self {
             config,
             secrets,
             paths,
+            history,
             worker,
             state: State { db_state: "unknown".into(), ..Default::default() },
             user: String::new(),
@@ -203,6 +222,37 @@ impl Session {
             jobs_pending: self.pending.len(),
             completed: self.completed.iter().filter(|(rev, _)| *rev > since).map(|(_, c)| c.clone()).collect(),
         })
+    }
+
+    /// Records a verification in the local history (memory, and the file when there is one).
+    fn record(&mut self, request: &Value, report: &Report) {
+        let user = request.get("user").and_then(Value::as_str).unwrap_or_default().to_string();
+        let id = i64::try_from(covercraft_core::now()).unwrap_or(0) * 1000 + i64::try_from(self.history.len() % 1000).unwrap_or(0);
+        let entry = HistoryEntry {
+            id,
+            date: covercraft_core::format_time(covercraft_core::now()),
+            user,
+            request: request.clone(),
+            answer: report_json(report),
+        };
+        if let Some(p) = &self.paths {
+            let path = history_path(p);
+            if let Ok(line) = serde_json::to_string(&entry)
+                && let Some(dir) = path.parent()
+                && std::fs::create_dir_all(dir).is_ok()
+                && let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path)
+            {
+                use std::io::Write;
+                let _ = writeln!(f, "{line}");
+            }
+        }
+        self.history.insert(0, entry);
+        self.history.truncate(MAX_HISTORY);
+    }
+
+    /// The local history, newest first, for one user or everyone.
+    pub fn history(&self, user: &str, limit: usize) -> Vec<HistoryEntry> {
+        self.history.iter().filter(|h| user.is_empty() || h.user == user).take(limit.max(1)).cloned().collect()
     }
 
     fn save(&mut self) -> Result<()> {
@@ -343,9 +393,12 @@ impl Session {
                 let n = self.state.civici.len();
                 json!({"candidates": self.state.civici.iter().map(civico_json).collect::<Vec<_>>(), "count": n, "ambiguous": n != 1})
             }
-            Output::Report(r) => {
+            Output::Report(r, request) => {
                 let v = report_json(&r);
                 if command == "coverage.verify" {
+                    if self.config.preferences.log_requests {
+                        self.record(&request, &r);
+                    }
                     self.state.report = Some(*r);
                     self.state.civici.clear();
                 }
@@ -354,10 +407,6 @@ impl Session {
             Output::Bridges(list) => {
                 self.state.bridges = list;
                 json!({"bridges": self.state.bridges.iter().map(bridge_json).collect::<Vec<_>>()})
-            }
-            Output::History(list) => {
-                self.state.history = list;
-                json!({"history": self.state.history.iter().map(history_json).collect::<Vec<_>>()})
             }
         }
     }
@@ -475,7 +524,12 @@ mod tests {
         let v = run(&mut s, "history.list", json!({})).unwrap();
         assert_eq!(v["history"].as_array().unwrap().len(), 2);
         assert_eq!(v["history"][0]["user"], "anna");
+        assert_eq!(v["history"][0]["request"]["egon"], "100300");
+        let v = run(&mut s, "history.list", json!({"user": "nobody"})).unwrap();
+        assert_eq!(v["history"].as_array().unwrap().len(), 0);
+        let v = run(&mut s, "history.list", json!({"all": true})).unwrap();
         let id = v["history"][1]["id"].as_i64().unwrap();
+        assert_eq!(v["history"][1]["request"]["civico"], "10");
         let v = run(&mut s, "history.open", json!({"id": id})).unwrap();
         assert_eq!(v["civico"]["civico"], "10");
         assert_eq!(s.state().report.as_ref().map(|r| r.civico.egon.as_str()), Some("100010"));
@@ -516,9 +570,15 @@ mod tests {
         assert_eq!((v["kind"].as_str(), v["has_password"].as_bool(), v.get("password")), (Some("mysql"), Some(true), None));
         run(&mut s, "prefs.set", json!({"language": "it", "max_bridges": 3, "radio_reach_km": {"D": 2}})).unwrap();
         assert!(s.italian());
+        // The history is a local file: the read-only database user never gets an INSERT.
+        run(&mut s, "coverage.verify", json!({"egon": "100010", "user": "anna"})).unwrap();
+        let file = std::fs::read_to_string(dir.join("history.jsonl")).unwrap();
+        assert_eq!(file.lines().count(), 1);
+        assert!(file.contains("\"egon\":\"100010\""));
         assert!(run(&mut s, "prefs.set", json!({"bogus": 1})).is_err());
         drop(s);
         let s2 = Session::new(factory, Some(Paths::under(&dir)));
+        assert_eq!(s2.history("", 10).len(), 1, "the history comes back from the file");
         assert_eq!(s2.config().db.kind, "mysql");
         assert!(s2.has_password());
         assert_eq!(s2.config().preferences.max_bridges, 3);

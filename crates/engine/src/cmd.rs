@@ -145,7 +145,9 @@ fn coverage_verify(sess: &mut Session, v: &Value) -> Result<Value> {
         if u.is_empty() { sess.user.clone() } else { u }
     };
     let request = json!({"comune": comune, "via": via, "civico": civico, "egon": egon, "user": user});
-    let log = sess.config.preferences.log_requests && !v.get("log").is_some_and(|l| l.as_bool() == Some(false));
+    // The database log is opt-in (the verification user is often read-only); the local
+    // history is kept by the session when the report lands.
+    let log = sess.config.preferences.log_to_database && !v.get("log").is_some_and(|l| l.as_bool() == Some(false));
     let kind = JobKind::Verify { comune, via, civico, egon, user, prefs: sess.config.preferences.clone(), log, request };
     Ok(json!({"job": sess.submit("coverage.verify", kind)?}))
 }
@@ -156,7 +158,9 @@ fn radio_list(sess: &mut Session, _: &Value) -> Result<Value> {
 
 fn history_list(sess: &mut Session, v: &Value) -> Result<Value> {
     let user = if v.get("all").and_then(Value::as_bool).unwrap_or(false) { String::new() } else { s(v, "user") };
-    Ok(json!({"job": sess.submit("history.list", JobKind::History { user, limit: limit(v, 50) })?}))
+    sess.state.history = sess.history(&user, limit(v, 200));
+    sess.touch();
+    Ok(json!({"history": sess.state.history.iter().map(crate::history_json).collect::<Vec<_>>()}))
 }
 
 fn history_open(sess: &mut Session, v: &Value) -> Result<Value> {
@@ -212,7 +216,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         id: "prefs.set",
         label: "Change preferences",
-        params: "language, theme, log_requests, radio_reach_km {A..D}, max_bridges, cells, cells_radius_km, max_cells, rules [{value, status}]",
+        params: "language, theme, log_requests, log_to_database, radio_reach_km {A..D}, max_bridges, cells, cells_radius_km, max_cells, rules [{value, status}]",
         local: true,
         run: prefs_set,
     },
@@ -235,7 +239,7 @@ pub const COMMANDS: &[Command] = &[
     Command { id: "coverage.verify", label: "Verify coverage", params: "comune, via, civico | egon; user, log", local: false, run: coverage_verify },
     Command { id: "report.get", label: "The last report", params: "", local: true, run: report_get },
     Command { id: "radio.list", label: "Radio bridges", params: "", local: false, run: radio_list },
-    Command { id: "history.list", label: "Past verifications", params: "user, all, limit", local: false, run: history_list },
+    Command { id: "history.list", label: "Past verifications (local history)", params: "user, all, limit", local: true, run: history_list },
     Command { id: "history.open", label: "Open a past verification", params: "id", local: true, run: history_open },
     Command { id: "session.user", label: "Who is verifying (for the log)", params: "user", local: true, run: session_user },
     Command { id: "state.get", label: "Session state", params: "", local: true, run: state_get },
