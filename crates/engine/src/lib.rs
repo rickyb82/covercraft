@@ -12,12 +12,14 @@ use std::time::Duration;
 
 pub use covercraft_core as core;
 use covercraft_core::config::{Config, Paths, Secrets};
+use covercraft_core::geo::Point;
+use covercraft_core::geocode::GeocoderFactory;
 use covercraft_core::model::*;
 use covercraft_core::source::SourceFactory;
 use serde_json::{Value, json};
 
 pub use cmd::{COMMANDS, Command};
-pub use worker::{JobKind, Output};
+pub use worker::{JobKind, Output, VerifyJob};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -119,6 +121,21 @@ fn history_path(p: &Paths) -> std::path::PathBuf {
     p.config.with_file_name("history.jsonl")
 }
 
+fn geocache_path(p: &Paths) -> std::path::PathBuf {
+    p.config.with_file_name("geocache.json")
+}
+
+fn load_geocache(path: &std::path::Path) -> BTreeMap<String, (Point, String)> {
+    let Ok(text) = std::fs::read_to_string(path) else { return BTreeMap::new() };
+    let Ok(map) = serde_json::from_str::<BTreeMap<String, Value>>(&text) else { return BTreeMap::new() };
+    map.into_iter()
+        .filter_map(|(k, v)| {
+            let p = Point::new(v.get("lat")?.as_f64()?, v.get("lon")?.as_f64()?)?;
+            Some((k, (p, v.get("source").and_then(Value::as_str).unwrap_or("geocoded").to_string())))
+        })
+        .collect()
+}
+
 /// Reads the history file, newest first (a broken line is skipped).
 fn load_history(path: &std::path::Path) -> Vec<HistoryEntry> {
     let Ok(text) = std::fs::read_to_string(path) else { return Vec::new() };
@@ -134,6 +151,8 @@ pub struct Session {
     paths: Option<Paths>,
     /// The local history of verifications (`history.jsonl` next to the configuration).
     history: Vec<HistoryEntry>,
+    /// Points found by the geocoder or set by hand, by EGON code (`geocache.json`).
+    geocache: BTreeMap<String, (Point, String)>,
     worker: worker::Worker,
     state: State,
     user: String,
@@ -146,17 +165,24 @@ pub struct Session {
 impl Session {
     /// A session on the configuration under `paths` (or defaults), with the source factory.
     pub fn new(factory: SourceFactory, paths: Option<Paths>) -> Self {
+        Self::with_geocoder(factory, None, paths)
+    }
+
+    /// The same, with a geocoder factory (asked when the tables give no point).
+    pub fn with_geocoder(factory: SourceFactory, geocoders: Option<GeocoderFactory>, paths: Option<Paths>) -> Self {
         let (config, secrets) = match &paths {
             Some(p) => (Config::load(&p.config).unwrap_or_default(), Secrets::load(&p.secrets).unwrap_or_default()),
             None => (Config::default(), Secrets::default()),
         };
-        let worker = worker::Worker::start(factory, config.db.clone(), secrets.db_password.clone());
+        let worker = worker::Worker::start(factory, geocoders, config.db.clone(), secrets.db_password.clone());
         let history = paths.as_ref().map(|p| load_history(&history_path(p))).unwrap_or_default();
+        let geocache = paths.as_ref().map(|p| load_geocache(&geocache_path(p))).unwrap_or_default();
         Self {
             config,
             secrets,
             paths,
             history,
+            geocache,
             worker,
             state: State { db_state: "unknown".into(), ..Default::default() },
             user: String::new(),
@@ -248,6 +274,30 @@ impl Session {
         }
         self.history.insert(0, entry);
         self.history.truncate(MAX_HISTORY);
+    }
+
+    /// Remembers a point for an EGON code (geocoded or set by hand) and saves the cache.
+    fn remember_point(&mut self, egon: &str, point: Point, source: &str) {
+        if egon.trim().is_empty() {
+            return;
+        }
+        self.geocache.insert(egon.trim().to_string(), (point, source.to_string()));
+        while self.geocache.len() > MAX_HISTORY * 10 {
+            let Some(k) = self.geocache.keys().next().cloned() else { break };
+            self.geocache.remove(&k);
+        }
+        if let Some(p) = &self.paths {
+            let map: BTreeMap<&String, Value> =
+                self.geocache.iter().map(|(k, (pt, src))| (k, json!({"lat": pt.lat, "lon": pt.lon, "source": src}))).collect();
+            if let Ok(text) = serde_json::to_string(&map) {
+                let _ = std::fs::write(geocache_path(p), text);
+            }
+        }
+    }
+
+    /// The remembered point of an EGON code.
+    pub fn cached_point(&self, egon: &str) -> Option<(Point, String)> {
+        self.geocache.get(egon.trim()).cloned()
     }
 
     /// The local history, newest first, for one user or everyone.
@@ -396,6 +446,11 @@ impl Session {
             Output::Report(r, request) => {
                 let v = report_json(&r);
                 if command == "coverage.verify" {
+                    if let Some(p) = r.point
+                        && matches!(r.point_source.as_str(), "geocoded" | "manual")
+                    {
+                        self.remember_point(&r.civico.egon, p, &r.point_source);
+                    }
                     if self.config.preferences.log_requests {
                         self.record(&request, &r);
                     }
@@ -570,15 +625,23 @@ mod tests {
         assert_eq!((v["kind"].as_str(), v["has_password"].as_bool(), v.get("password")), (Some("mysql"), Some(true), None));
         run(&mut s, "prefs.set", json!({"language": "it", "max_bridges": 3, "radio_reach_km": {"D": 2}})).unwrap();
         assert!(s.italian());
+        // A point set by hand is used, remembered in geocache.json and reused next time.
+        let v = run(&mut s, "coverage.verify", json!({"egon": "100300", "lat": 39.3, "lon": 9.2})).unwrap();
+        assert_eq!(v["point_source"], "manual");
+        assert!(dir.join("geocache.json").is_file());
+        let v = run(&mut s, "coverage.verify", json!({"egon": "100300"})).unwrap();
+        assert_eq!((v["point_source"].as_str(), v["point"]["lat"].as_f64()), (Some("manual"), Some(39.3)));
+        assert!(run(&mut s, "coverage.verify", json!({"egon": "100300", "lat": "x", "lon": 9.2})).is_err());
         // The history is a local file: the read-only database user never gets an INSERT.
         run(&mut s, "coverage.verify", json!({"egon": "100010", "user": "anna"})).unwrap();
         let file = std::fs::read_to_string(dir.join("history.jsonl")).unwrap();
-        assert_eq!(file.lines().count(), 1);
+        assert_eq!(file.lines().count(), 3);
         assert!(file.contains("\"egon\":\"100010\""));
         assert!(run(&mut s, "prefs.set", json!({"bogus": 1})).is_err());
         drop(s);
         let s2 = Session::new(factory, Some(Paths::under(&dir)));
-        assert_eq!(s2.history("", 10).len(), 1, "the history comes back from the file");
+        assert_eq!(s2.history("", 10).len(), 3, "the history comes back from the file");
+        assert_eq!(s2.cached_point("100300").map(|(p, src)| (p.lat, src)), Some((39.3, "manual".into())));
         assert_eq!(s2.config().db.kind, "mysql");
         assert!(s2.has_password());
         assert_eq!(s2.config().preferences.max_bridges, 3);

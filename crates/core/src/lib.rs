@@ -9,8 +9,10 @@
 pub mod address;
 pub mod config;
 pub mod geo;
+pub mod geocode;
 pub mod mock;
 pub mod model;
+pub mod radio;
 pub mod report;
 pub mod source;
 pub mod status;

@@ -39,8 +39,12 @@ nelle risposte.
    decodificati da `openfiber_status` e i POP XGS-PON, `ftth_fw`/`ftts_fw`/`vula_fw`/`gpon_fw`
    di Fastweb, `sirius_netmap` (la tua rete).
 4. **Coordinate** del civico da `COORDINATE_BUILDING` di Open Fiber, altrimenti dalla
-   polilinea della via (`sirius_egon_polylines`); da lì distanza e direzione di ogni ponte
-   radio (`radio_table`, portata per fascia configurabile) e le celle di `cell_db`.
+   polilinea della via (`sirius_egon_polylines`), altrimenti dagli altri edifici Open Fiber della
+   via, altrimenti da un Nominatim tuo (`docker-compose.yml` ne include uno con l'Italia); si
+   possono anche scrivere a mano. Da lì **mappa** (OpenStreetMap), distanza, direzione e
+   **bilancio del collegamento** verso ogni ponte radio (`radio_table`, 5 GHz / 23 dBm / 23 dBi
+   preimpostati e modificabili: potenza ricevuta, margine, velocità stimata, zona di Fresnel) e
+   le celle di `cell_db`.
 5. Ogni stato è un semaforo (coperto / pianificato / non coperto / non noto) **con accanto il
    valore originale della cella**; le parole che il semaforo non conosce si insegnano nelle
    impostazioni (regole `VALORE=stato`).

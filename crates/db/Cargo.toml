@@ -12,6 +12,7 @@ covercraft-core = { workspace = true }
 serde_json = { workspace = true }
 mysql = { workspace = true }
 rusqlite = { workspace = true }
+ehttp = { workspace = true }
 
 [lints]
 workspace = true

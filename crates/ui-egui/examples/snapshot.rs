@@ -96,6 +96,7 @@ fn main() {
     let mut out = "snapshot.png".to_string();
     let mut dark = false;
     let mut app = CoverApp::demo();
+    app.map.tiles_enabled = false;
     let mut egon: Option<String> = Some("100010".into());
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -116,6 +117,7 @@ fn main() {
             "--history" => app.screen = Screen::History,
             "--radio" => app.screen = Screen::Radio,
             "--settings" => app.screen = Screen::Settings,
+            "--tiles" => app.map.tiles_enabled = true,
             "--size" => {
                 if let Some((a, b)) = it.next().and_then(|s| s.split_once('x')) {
                     w = a.parse().unwrap_or(w);

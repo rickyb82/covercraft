@@ -34,7 +34,7 @@ pub fn show(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
             if item(ui, t, Icon::Antenna, app.tr("Radio bridges"), app.screen == Screen::Radio).clicked() {
                 app.screen = Screen::Radio;
             }
-            if item(ui, t, Icon::Settings, app.tr("Settings"), app.screen == Screen::Settings).clicked() {
+            if app.allow_settings && item(ui, t, Icon::Settings, app.tr("Settings"), app.screen == Screen::Settings).clicked() {
                 app.screen = Screen::Settings;
             }
             ui.add_space(16.0);

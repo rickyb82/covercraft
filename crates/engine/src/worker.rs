@@ -4,6 +4,8 @@
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use covercraft_core::config::{DbConfig, Preferences};
+use covercraft_core::geo::Point;
+use covercraft_core::geocode::GeocoderFactory;
 use covercraft_core::model::*;
 use covercraft_core::source::{CoverageSource, SourceFactory};
 use covercraft_core::{Error, Result, address, report};
@@ -18,8 +20,24 @@ pub enum JobKind {
     Streets { comune: String, query: String, limit: usize },
     Civici { comune: String, street_egon: String, limit: usize },
     Resolve { comune: String, via: String, civico: String, limit: usize },
-    Verify { comune: String, via: String, civico: String, egon: String, user: String, prefs: Preferences, log: bool, request: Value },
+    Verify(Box<VerifyJob>),
     Bridges,
+}
+
+/// A verification: the address or the EGON code, and what goes with it.
+#[derive(Clone, Debug)]
+pub struct VerifyJob {
+    pub comune: String,
+    pub via: String,
+    pub civico: String,
+    pub egon: String,
+    pub user: String,
+    pub prefs: Preferences,
+    /// Also write the database's `requests_log`.
+    pub log: bool,
+    pub request: Value,
+    /// A point given by the person (`manual`) or from the cache (`geocoded`).
+    pub given: Option<(Point, String)>,
 }
 
 /// What a job answers.
@@ -54,6 +72,7 @@ pub struct Worker {
 
 struct Inner {
     factory: SourceFactory,
+    geocoders: Option<GeocoderFactory>,
     source: Option<Box<dyn CoverageSource>>,
     db: DbConfig,
     password: String,
@@ -131,7 +150,8 @@ impl Inner {
                 let c = self.comune(&comune)?;
                 Ok(Output::Candidates(self.source()?.resolve(&c, &via, &civico, limit)?))
             }
-            JobKind::Verify { comune, via, civico, egon, user, prefs, log, request } => {
+            JobKind::Verify(job) => {
+                let VerifyJob { comune, via, civico, egon, user, prefs, log, request, given } = *job;
                 let c = if comune.trim().is_empty() { None } else { Some(self.comune(&comune)?) };
                 let target = if !egon.trim().is_empty() {
                     self.source()?.civico(c.as_ref(), &egon)?.ok_or_else(|| Error::NotFound(format!("EGON {}", egon.trim())))?
@@ -165,7 +185,11 @@ impl Inner {
                         })
                     }
                 };
-                let r = report::gather(self.source()?, &comune, &target, &prefs)?;
+                let factory = self.geocoders.clone();
+                let mut geocoder: Option<Box<dyn covercraft_core::geocode::Geocoder>> = factory.and_then(|f| f(&prefs.geocode_url));
+                let source = self.source()?;
+                let geocoder_ref = geocoder.as_mut().map(|g| &mut **g as &mut dyn covercraft_core::geocode::Geocoder);
+                let r = report::gather_with(source, geocoder_ref, given, &comune, &target, &prefs)?;
                 if log {
                     let answer = crate::report_json(&r);
                     if let Err(e) = self.source()?.log(&user, &request, &answer) {
@@ -183,13 +207,13 @@ impl Inner {
 }
 
 impl Worker {
-    pub fn start(factory: SourceFactory, db: DbConfig, password: String) -> Self {
+    pub fn start(factory: SourceFactory, geocoders: Option<GeocoderFactory>, db: DbConfig, password: String) -> Self {
         let (tx, jobs) = channel::<Job>();
         let (events, rx) = channel::<Event>();
         std::thread::Builder::new()
             .name("covercraft-db".into())
             .spawn(move || {
-                let mut inner = Inner { factory, source: None, db, password, comuni: Vec::new() };
+                let mut inner = Inner { factory, geocoders, source: None, db, password, comuni: Vec::new() };
                 while let Ok(job) = jobs.recv() {
                     let kind = job.kind.clone();
                     let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| inner.run(kind))) {

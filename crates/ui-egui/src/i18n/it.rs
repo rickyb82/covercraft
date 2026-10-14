@@ -150,6 +150,46 @@ pub(super) fn translate(text: &str) -> Option<&'static str> {
         "Street code" => "Codice via",
         "Civico code" => "Codice civico",
         "Source" => "Origine",
+        "Map" => "Mappa",
+        "Drag to move, scroll with Ctrl to zoom. Lines: links with a working budget; dashed: within reach but weak." => {
+            "Trascina per spostare, Ctrl + rotella per lo zoom. Linee piene: collegamenti con bilancio sufficiente; tratteggiate: in portata ma deboli."
+        }
+        "Link budget" => "Bilancio del collegamento",
+        "min RX" => "RX minimo",
+        "fade margin" => "margine",
+        "Margin" => "Margine",
+        "Rate" => "Velocità",
+        "Quality" => "Qualità",
+        "Excellent" => "Ottimo",
+        "Good" => "Buono",
+        "Marginal" => "Al limite",
+        "Insufficient" => "Insufficiente",
+        "Clear path assumed: the terrain is not checked yet." => "Si assume visibilità libera: il terreno non è ancora verificato.",
+        "Set the point by hand" => "Imposta il punto a mano",
+        "Use these coordinates" => "Usa queste coordinate",
+        "Open in OpenStreetMap" => "Apri in OpenStreetMap",
+        "Coordinates must be two numbers, e.g. 39.2238 and 9.1217" => "Le coordinate sono due numeri, es. 39.2238 e 9.1217",
+        "Geocoder (Nominatim URL)" => "Geocodifica (URL Nominatim)",
+        "Map tiles URL" => "URL delle tessere della mappa",
+        "The geocoder is asked only when no table places the civico; the answer is remembered." => {
+            "La geocodifica viene chiesta solo quando nessuna tabella posiziona il civico; la risposta viene ricordata."
+        }
+        "Radio links (5 GHz)" => "Collegamenti radio (5 GHz)",
+        "The equipment on both ends; the sectors on the bridges use the same figures. Presets: 5.5 GHz, 40 MHz, 23 dBm, 23 dBi." => {
+            "Gli apparati ai due capi; i settori sui ponti usano gli stessi valori. Preimpostati: 5,5 GHz, 40 MHz, 23 dBm, 23 dBi."
+        }
+        "Save radio settings" => "Salva i parametri radio",
+        "Frequency (GHz)" => "Frequenza (GHz)",
+        "Channel width (MHz)" => "Larghezza canale (MHz)",
+        "TX power (dBm)" => "Potenza TX (dBm)",
+        "Bridge/sector antenna gain (dBi)" => "Guadagno antenna ponte/settore (dBi)",
+        "Customer antenna gain (dBi)" => "Guadagno antenna cliente (dBi)",
+        "Cable losses per side (dB)" => "Perdite cavi per lato (dB)",
+        "Fade margin (dB)" => "Margine di fading (dB)",
+        "Minimum RX for a usable link (dBm)" => "RX minimo per un collegamento utilizzabile (dBm)",
+        "Customer antenna height (m)" => "Altezza antenna cliente (m)",
+        "geocoded" => "geocodificato",
+        "by hand" => "a mano",
         _ => return None,
     })
 }

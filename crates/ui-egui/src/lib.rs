@@ -7,6 +7,7 @@
 mod chrome;
 pub mod i18n;
 pub mod icons;
+pub mod map;
 mod nav;
 mod report;
 mod settings;
@@ -73,6 +74,13 @@ pub struct CoverApp {
     /// Expanded service rows (technology names).
     pub expanded: Vec<String>,
     pub history_all: bool,
+    /// The settings screen and its button are shown (off for non-administrators on a server).
+    pub allow_settings: bool,
+    /// The map widget's state; tiles come from the network unless disabled.
+    pub map: map::MapState,
+    /// Coordinates typed by hand for the open civico.
+    pub manual_lat: String,
+    pub manual_lon: String,
     loaded: Loaded,
 }
 
@@ -105,8 +113,23 @@ impl CoverApp {
             picking: false,
             expanded: Vec::new(),
             history_all: true,
+            allow_settings: true,
+            map: map::MapState::new(true),
+            manual_lat: String::new(),
+            manual_lon: String::new(),
             loaded: Loaded::default(),
         }
+    }
+
+    /// Re-verifies the open civico at a point typed by hand.
+    pub fn verify_at(&mut self, egon: &str, lat: &str, lon: &str) {
+        let parse = |s: &str| s.trim().replace(',', ".").parse::<f64>().ok();
+        let (Some(lat), Some(lon)) = (parse(lat), parse(lon)) else {
+            self.status = self.tr("Coordinates must be two numbers, e.g. 39.2238 and 9.1217").to_string();
+            return;
+        };
+        self.status = self.tr("Checking…").to_string();
+        self.run("coverage.verify", json!({"egon": egon, "lat": lat, "lon": lon}));
     }
 
     pub fn demo() -> Self {
@@ -331,6 +354,9 @@ impl CoverApp {
             ui.ctx().request_repaint_after(Duration::from_millis(100));
         }
         self.keyboard(ui);
+        if !self.allow_settings && self.screen == Screen::Settings {
+            self.screen = Screen::Verify;
+        }
         chrome::top_bar(self, ui, &tokens);
         chrome::status_bar(self, ui, &tokens);
         nav::show(self, ui, &tokens);
@@ -373,6 +399,7 @@ mod tests {
     fn verifies_from_the_form_and_walks_the_screens() {
         let ctx = egui::Context::default();
         let mut app = CoverApp::demo();
+        app.map.tiles_enabled = false;
         app.language = Language::It;
         frame(&mut app, &ctx, vec![]);
         frame(&mut app, &ctx, vec![]);
@@ -424,5 +451,15 @@ mod tests {
         app.form.via.clear();
         app.verify();
         assert!(app.status.contains("Scrivi"));
+        app.verify_at("100300", "39,25", "9.15");
+        frame(&mut app, &ctx, vec![]);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.session.state().report.as_ref().map(|r| r.point_source.as_str()), Some("manual"));
+        app.verify_at("100300", "x", "9");
+        assert!(app.status.contains("due numeri"));
+        app.allow_settings = false;
+        app.screen = Screen::Settings;
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.screen, Screen::Verify, "the settings are not shown when not allowed");
     }
 }

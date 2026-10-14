@@ -114,9 +114,23 @@ pub fn report_text(r: &Report, italian: bool) -> String {
     if !r.radio.is_empty() {
         out.push_str(&format!("\n{}\n", if italian { "Ponti radio" } else { "Radio bridges" }));
         for h in &r.radio {
+            let link = h
+                .link
+                .as_ref()
+                .map(|l| {
+                    format!(
+                        "  RX {:.0} dBm, {} {:+.0} dB, ~{:.0} Mbit/s, Fresnel {:.1} m",
+                        l.rx_dbm,
+                        if italian { "margine" } else { "margin" },
+                        l.margin_db,
+                        l.rate_mbps,
+                        l.fresnel_m
+                    )
+                })
+                .unwrap_or_default();
             out.push_str(&format!(
-                "  {} {:<22} {:>6.1} km  {:>3}° {:<2}  {} {}{}\n",
-                if h.in_reach { "●" } else { "○" },
+                "  {} {:<22} {:>6.1} km  {:>3}° {:<2}  {} {}{}{}\n",
+                if h.in_reach && h.link.as_ref().is_none_or(|l| l.ok()) { "●" } else { "○" },
                 h.bridge.name,
                 h.distance_m / 1000.0,
                 h.bearing_deg.round() as i64,
@@ -124,6 +138,7 @@ pub fn report_text(r: &Report, italian: bool) -> String {
                 if italian { "fascia" } else { "band" },
                 h.bridge.band,
                 if h.bridge.state.is_empty() { String::new() } else { format!("  [{}]", h.bridge.state) },
+                link,
             ));
         }
     }

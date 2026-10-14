@@ -47,7 +47,11 @@ impl Hub {
         if map.len() >= 500 {
             return Err("too many users loaded".into());
         }
-        let mut session = if self.opts.demo { Session::demo() } else { Session::new(self.factory.clone(), self.opts.paths.clone()) };
+        let mut session = if self.opts.demo {
+            Session::demo()
+        } else {
+            Session::with_geocoder(self.factory.clone(), Some(covercraft_db::geocoder_factory()), self.opts.paths.clone())
+        };
         session.set_user(user);
         if let Some(l) = &self.opts.lang
             && session.config().preferences.language.is_empty()

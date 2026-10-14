@@ -144,11 +144,34 @@ fn coverage_verify(sess: &mut Session, v: &Value) -> Result<Value> {
         let u = s(v, "user");
         if u.is_empty() { sess.user.clone() } else { u }
     };
+    // A point given by hand (`lat`, `lon`), else one remembered for the EGON code.
+    let num = |k: &str| {
+        v.get(k).map(|x| {
+            x.as_f64()
+                .or_else(|| x.as_str().and_then(|t| t.trim().replace(',', ".").parse().ok()))
+                .ok_or_else(|| Error::Param(format!("`{k}` must be a number")))
+        })
+    };
+    let given = match (num("lat"), num("lon")) {
+        (Some(lat), Some(lon)) => {
+            let p = covercraft_core::geo::Point::new(lat?, lon?).ok_or_else(|| Error::Param("`lat`/`lon` out of range".into()))?;
+            Some((p, "manual".to_string()))
+        }
+        (None, None) => {
+            if egon.is_empty() {
+                None
+            } else {
+                sess.cached_point(&egon)
+            }
+        }
+        _ => return Err(Error::Param("give both `lat` and `lon`".into())),
+    };
     let request = json!({"comune": comune, "via": via, "civico": civico, "egon": egon, "user": user});
     // The database log is opt-in (the verification user is often read-only); the local
     // history is kept by the session when the report lands.
     let log = sess.config.preferences.log_to_database && !v.get("log").is_some_and(|l| l.as_bool() == Some(false));
-    let kind = JobKind::Verify { comune, via, civico, egon, user, prefs: sess.config.preferences.clone(), log, request };
+    let kind =
+        JobKind::Verify(Box::new(crate::VerifyJob { comune, via, civico, egon, user, prefs: sess.config.preferences.clone(), log, request, given }));
     Ok(json!({"job": sess.submit("coverage.verify", kind)?}))
 }
 
@@ -216,7 +239,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         id: "prefs.set",
         label: "Change preferences",
-        params: "language, theme, log_requests, log_to_database, radio_reach_km {A..D}, max_bridges, cells, cells_radius_km, max_cells, rules [{value, status}]",
+        params: "language, theme, log_requests, log_to_database, geocode_url, tiles_url, radio {frequency_ghz, channel_mhz, tx_power_dbm, bridge_gain_dbi, client_gain_dbi, cable_loss_db, fade_margin_db, min_rx_dbm, client_height_m}, radio_reach_km {A..D}, max_bridges, cells, cells_radius_km, max_cells, rules [{value, status}]",
         local: true,
         run: prefs_set,
     },
@@ -236,7 +259,13 @@ pub const COMMANDS: &[Command] = &[
         local: false,
         run: address_resolve,
     },
-    Command { id: "coverage.verify", label: "Verify coverage", params: "comune, via, civico | egon; user, log", local: false, run: coverage_verify },
+    Command {
+        id: "coverage.verify",
+        label: "Verify coverage",
+        params: "comune, via, civico | egon; lat, lon (a point set by hand); user, log",
+        local: false,
+        run: coverage_verify,
+    },
     Command { id: "report.get", label: "The last report", params: "", local: true, run: report_get },
     Command { id: "radio.list", label: "Radio bridges", params: "", local: false, run: radio_list },
     Command { id: "history.list", label: "Past verifications (local history)", params: "user, all, limit", local: true, run: history_list },

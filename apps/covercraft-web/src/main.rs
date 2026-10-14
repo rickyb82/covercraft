@@ -46,6 +46,9 @@ mod web {
                 app.language = l;
             }
             app.dark = saved.as_ref().and_then(|v| v.get("dark")?.as_bool()).unwrap_or_else(|| cc.egui_ctx.system_theme() == Some(egui::Theme::Dark));
+            // `?settings=off`: the framework hides the settings from non-administrators (its
+            // proxy refuses the commands too; this only removes the button).
+            app.allow_settings = query_param("settings").is_none_or(|s| s != "off" && s != "0" && s != "false");
             Self { app, token, user }
         }
     }

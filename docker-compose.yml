@@ -11,5 +11,27 @@ services:
       COVERCRAFT_LANG: it
     volumes:
       - covercraft-data:/data
+
+  # Nominatim (OpenStreetMap geocoder), asked only when the tables give no point for a civico.
+  # First start imports Italy (~2 GB download, 1-3 hours, ~10 GB RAM); later starts are quick.
+  # Then set the geocoder in CoverCraft's Settings (or `covercraft-cli prefs geocode_url=http://nominatim:8080`).
+  nominatim:
+    image: mediagis/nominatim:5.1
+    restart: unless-stopped
+    environment:
+      PBF_URL: https://download.geofabrik.de/europe/italy-latest.osm.pbf
+      REPLICATION_URL: https://download.geofabrik.de/europe/italy-updates/
+      NOMINATIM_PASSWORD: ${NOMINATIM_PASSWORD:-change-me}
+      IMPORT_WIKIPEDIA: "false"
+      THREADS: "4"
+    volumes:
+      - nominatim-data:/var/lib/postgresql/16/main
+      - nominatim-flatnode:/nominatim/flatnode
+    ports:
+      - "127.0.0.1:8081:8080"   # the search API, for the host; CoverCraft reaches it as http://nominatim:8080
+    shm_size: 1g
+
 volumes:
   covercraft-data:
+  nominatim-data:
+  nominatim-flatnode:

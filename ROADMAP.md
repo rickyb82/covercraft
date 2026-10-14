@@ -21,13 +21,15 @@
 - Run against the real database: tune the wording rules on the real values (Open Fiber
   statuses, Fastweb vendibilità, TIM planning columns), confirm `COORDINATE_BUILDING` and
   `polylines` formats, measure query times on the big TIM tables (indexes on `STRADA_CLIENTE`).
+- Line of sight with a terrain model (Tinitaly 10 m DEM): profile, Fresnel clearance, obstruction point.
 - Typo-tolerant street search and a civici cache across comuni.
-- Export of the report (PDF/print page), map tiles for bridges.
+- Export of the report (PDF/print page).
 
 ## Progress log
 
 | Date | What landed |
 |---|---|
+| 2026-10-14 | Map (OpenStreetMap tiles through `walkers`) in the report and in the bridges screen; 5 GHz link budget for every bridge (FSPL, RX, margin, rate, Fresnel; presets 23 dBm / 23 dBi, editable in Settings → Radio links); Nominatim geocoder as the last resort with a local cache, `docker-compose` service with the Italy extract; coordinates by hand in the report; `?settings=off` hides the settings for non-administrators |
 | 2026-10-14 | Local history (`history.jsonl` next to the configuration) instead of writing to the database: a read-only MySQL user is enough, `requests_log` only with `log_to_database`; civici without Open Fiber coordinates or a polyline are placed at the middle of the street's other Open Fiber buildings; the polyline is also looked up without leading zeros in the street code |
 | 2026-10-14 | No limits on comuni, streets and civici: statements may return 50 000 rows (the previous 2 000 cut the comuni list at the letter B), suggestion menus scroll, `comune.list`/`street.search`/`civico.list` return everything unless `limit` is given |
 | 2026-10-14 | Region → province → comune cascade in the address bar (`istat` names on every comune, `comune.list` filters and `regioni`/`province` listings for the CLI and MCP); suggestion menus stay open while the pointer is on them, so a click on a suggestion lands |

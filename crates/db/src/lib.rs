@@ -7,6 +7,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod demo;
+pub mod geocoder;
 mod mysql_exec;
 mod sql;
 mod sqlite_exec;
@@ -59,6 +60,14 @@ pub fn open(db: &DbConfig, password: &str) -> Result<Box<dyn CoverageSource>> {
 /// The factory apps hand to the engine.
 pub fn factory() -> SourceFactory {
     std::sync::Arc::new(open)
+}
+
+/// The geocoder factory apps hand to the engine (Nominatim over HTTP).
+pub fn geocoder_factory() -> covercraft_core::geocode::GeocoderFactory {
+    std::sync::Arc::new(|url| {
+        let url = url.trim().trim_end_matches('/');
+        (!url.is_empty()).then(|| Box::new(geocoder::Nominatim::new(url)) as Box<dyn covercraft_core::geocode::Geocoder>)
+    })
 }
 
 /// A source on an in-memory SQLite copy of the schema, filled with the demo city: the demo

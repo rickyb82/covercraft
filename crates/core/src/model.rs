@@ -219,6 +219,8 @@ pub struct RadioHit {
     /// Within the band's reach.
     pub in_reach: bool,
     pub reach_m: f64,
+    /// The link budget over the distance (clear path assumed).
+    pub link: Option<crate::radio::LinkEstimate>,
 }
 
 /// A mobile cell seen from the address.
@@ -273,9 +275,11 @@ impl Report {
         self.services.iter().filter(move |s| s.provider == Some(p))
     }
 
-    /// Nearest bridge in reach, if any.
+    /// Nearest bridge in reach whose link budget works (else the nearest in reach), if any.
     pub fn best_radio(&self) -> Option<&RadioHit> {
-        self.radio.iter().filter(|r| r.in_reach).min_by(|a, b| a.distance_m.total_cmp(&b.distance_m))
+        let usable =
+            self.radio.iter().filter(|r| r.in_reach && r.link.as_ref().is_none_or(|l| l.ok())).min_by(|a, b| a.distance_m.total_cmp(&b.distance_m));
+        usable.or_else(|| self.radio.iter().filter(|r| r.in_reach).min_by(|a, b| a.distance_m.total_cmp(&b.distance_m)))
     }
 }
 

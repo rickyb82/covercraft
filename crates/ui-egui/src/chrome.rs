@@ -162,7 +162,7 @@ pub fn top_bar(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
                 app.picking = false;
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if icon_button(ui, t, Icon::Settings, app.tr("Settings"), true, app.screen == Screen::Settings).clicked() {
+                if app.allow_settings && icon_button(ui, t, Icon::Settings, app.tr("Settings"), true, app.screen == Screen::Settings).clicked() {
                     app.screen = if app.screen == Screen::Settings { Screen::Verify } else { Screen::Settings };
                 }
                 let (icon, tip) = if app.dark { (Icon::Sun, "Light theme") } else { (Icon::Moon, "Dark theme") };

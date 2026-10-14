@@ -10,6 +10,7 @@ repository.workspace = true
 [dependencies]
 covercraft-engine = { workspace = true }
 egui = { workspace = true }
+walkers = "0.61"
 serde_json = { workspace = true }
 sys-locale = { workspace = true }
 

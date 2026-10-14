@@ -419,6 +419,7 @@ pub fn radio_hits(point: Point, bridges: &[Bridge], prefs: &Preferences) -> Vec<
                 compass: geo::compass(bearing_deg).to_string(),
                 in_reach: distance_m <= reach_m,
                 reach_m,
+                link: Some(crate::radio::estimate(distance_m, &prefs.radio)),
             })
         })
         .collect();
@@ -463,6 +464,8 @@ pub struct Inputs {
     pub polyline: Option<String>,
     /// Coordinates of other buildings on the street, when the civico has none.
     pub street_points: Vec<String>,
+    /// A point given by the person or found by the geocoder, with its source name.
+    pub given_point: Option<(Point, String)>,
     pub bridges: Vec<Bridge>,
     pub cells: Vec<Cell>,
 }
@@ -511,7 +514,10 @@ pub fn build(inputs: Inputs, prefs: &Preferences) -> Report {
     }
     r.services.extend(fw);
     r.services.extend(own_services(&inputs.own, prefs));
-    let (point, source) = locate(&inputs.openfiber, inputs.polyline.as_deref(), &inputs.street_points);
+    let (point, source) = match &inputs.given_point {
+        Some((p, src)) => (Some(*p), src.as_str()),
+        None => locate(&inputs.openfiber, inputs.polyline.as_deref(), &inputs.street_points),
+    };
     r.point = point;
     r.point_source = source.into();
     match point {
@@ -526,9 +532,23 @@ pub fn build(inputs: Inputs, prefs: &Preferences) -> Report {
     r
 }
 
-/// Reads everything for a civico from a source and builds the report.
+/// Reads everything for a civico from a source and builds the report. `given` is a point the
+/// person set or a cached geocoding (source name included); `geocoder` is asked only when
+/// nothing places the civico.
 pub fn gather(source: &mut dyn CoverageSource, comune: &Comune, civico: &Civico, prefs: &Preferences) -> Result<Report> {
+    gather_with(source, None, None, comune, civico, prefs)
+}
+
+pub fn gather_with(
+    source: &mut dyn CoverageSource,
+    geocoder: Option<&mut dyn crate::geocode::Geocoder>,
+    given: Option<(Point, String)>,
+    comune: &Comune,
+    civico: &Civico,
+    prefs: &Preferences,
+) -> Result<Report> {
     let egon = civico.egon.trim();
+    let mut notes_extra: Vec<String> = Vec::new();
     let tim = if comune.table.is_empty() { None } else { source.tim(comune, egon)? };
     let openfiber = source.openfiber(egon)?;
     let statuses = if openfiber.is_empty() { Vec::new() } else { source.openfiber_statuses()? };
@@ -536,7 +556,7 @@ pub fn gather(source: &mut dyn CoverageSource, comune: &Comune, civico: &Civico,
     let fastweb = source.fastweb(egon)?;
     let own = source.own(egon)?;
     let strada = civico.egon_strada.trim();
-    let located = openfiber.iter().any(|r| geo::parse_point(&r.coordinates).is_some());
+    let located = given.is_some() || openfiber.iter().any(|r| geo::parse_point(&r.coordinates).is_some());
     let polyline = if located || strada.is_empty() {
         None
     } else {
@@ -554,7 +574,19 @@ pub fn gather(source: &mut dyn CoverageSource, comune: &Comune, civico: &Civico,
     } else {
         source.street_coordinates(strada, limits::ROWS)?
     };
-    let (point, _) = locate(&openfiber, polyline.as_deref(), &street_points);
+    let mut given_point = given;
+    if given_point.is_none()
+        && locate(&openfiber, polyline.as_deref(), &street_points).0.is_none()
+        && let Some(g) = geocoder
+    {
+        let q = crate::geocode::GeocodeQuery::from_civico(civico);
+        match g.geocode(&q) {
+            Ok(Some(p)) => given_point = Some((p, "geocoded".into())),
+            Ok(None) => {}
+            Err(e) => notes_extra.push(format!("geocode_failed: {e}")),
+        }
+    }
+    let point = given_point.as_ref().map(|(p, _)| *p).or_else(|| locate(&openfiber, polyline.as_deref(), &street_points).0);
     let bridges = if point.is_some() { source.bridges()? } else { Vec::new() };
     let cells = match point {
         Some(p) if prefs.cells => {
@@ -563,7 +595,12 @@ pub fn gather(source: &mut dyn CoverageSource, comune: &Comune, civico: &Civico,
         }
         _ => Vec::new(),
     };
-    Ok(build(Inputs { civico: civico.clone(), tim, openfiber, statuses, xgspon_pops, fastweb, own, polyline, street_points, bridges, cells }, prefs))
+    let mut r = build(
+        Inputs { civico: civico.clone(), tim, openfiber, statuses, xgspon_pops, fastweb, own, polyline, street_points, given_point, bridges, cells },
+        prefs,
+    );
+    r.notes.extend(notes_extra);
+    Ok(r)
 }
 
 #[cfg(test)]
@@ -653,6 +690,37 @@ mod tests {
             vec![Cell { mcc: "222".into(), net: "10".into(), lat: "39.224".into(), lon: "9.122".into(), range: "1000".into(), ..Default::default() }];
         let ch = cell_hits(here, &cells, &prefs);
         assert_eq!((ch[0].operator.as_str(), ch[0].in_range), ("Vodafone", true));
+    }
+
+    struct FakeGeocoder(Option<Point>, usize);
+    impl crate::geocode::Geocoder for FakeGeocoder {
+        fn geocode(&mut self, _q: &crate::geocode::GeocodeQuery) -> Result<Option<Point>> {
+            self.1 += 1;
+            Ok(self.0)
+        }
+    }
+
+    #[test]
+    fn geocoder_and_given_points_place_the_civico() {
+        let prefs = Preferences::default();
+        let mut m = crate::mock::MockSource::demo();
+        let cagliari = m.comuni[0].clone();
+        let marconi = m.civici.iter().find(|c| c.egon == "100300").cloned().unwrap();
+        m.polylines.clear();
+        let mut g = FakeGeocoder(Point::new(39.25, 9.15), 0);
+        let r = gather_with(&mut m, Some(&mut g), None, &cagliari, &marconi, &prefs).unwrap();
+        assert_eq!((r.point_source.as_str(), g.1), ("geocoded", 1));
+        assert!(!r.radio.is_empty() && r.radio[0].link.is_some());
+        // A given point wins and the geocoder is not asked.
+        let r = gather_with(&mut m, Some(&mut g), Some((Point { lat: 39.0, lon: 9.0 }, "manual".into())), &cagliari, &marconi, &prefs).unwrap();
+        assert_eq!((r.point_source.as_str(), g.1), ("manual", 1));
+        // A civico the tables place never asks the geocoder.
+        let roma = m.civici[0].clone();
+        let r = gather_with(&mut m, Some(&mut g), None, &cagliari, &roma, &prefs).unwrap();
+        assert_eq!((r.point_source.as_str(), g.1), ("openfiber", 1));
+        let mut none = FakeGeocoder(None, 0);
+        let r = gather_with(&mut m, Some(&mut none), None, &cagliari, &marconi, &prefs).unwrap();
+        assert!(r.notes.contains(&"no_point".to_string()));
     }
 
     #[test]

@@ -10,8 +10,8 @@ use covercraft_engine::{Session, text};
 use serde_json::{Value, json};
 
 const USAGE: &str = "Usage:
-  covercraft-cli verify COMUNE VIA [CIVICO] [--json] [--user NAME] [--no-log]
-  covercraft-cli verify --egon CODE [--json]
+  covercraft-cli verify COMUNE VIA [CIVICO] [--json] [--user NAME] [--lat L --lon L]
+  covercraft-cli verify --egon CODE [--json] [--lat L --lon L]
   covercraft-cli comuni [QUERY]
   covercraft-cli streets COMUNE QUERY
   covercraft-cli civici COMUNE STREET_EGON
@@ -83,7 +83,7 @@ fn session(args: &[String]) -> Session {
             Some(h) => Paths::under(std::path::Path::new(&h)),
             None => Paths::default_dirs(),
         };
-        Session::new(covercraft_db::factory(), Some(paths))
+        Session::with_geocoder(covercraft_db::factory(), Some(covercraft_db::geocoder_factory()), Some(paths))
     };
     if let Some(l) = flag(args, "--lang").or_else(|| std::env::var("COVERCRAFT_LANG").ok()) {
         let _ = s.execute("prefs.set", &json!({"language": l}));
@@ -116,6 +116,10 @@ fn run(args: &[String]) -> Result<(), String> {
             let mut s = session(args);
             let italian = s.italian();
             let mut params = json!({"user": flag(args, "--user").unwrap_or_default(), "log": !has(args, "--no-log")});
+            if let (Some(lat), Some(lon)) = (flag(args, "--lat"), flag(args, "--lon")) {
+                params["lat"] = json!(lat);
+                params["lon"] = json!(lon);
+            }
             if let Some(e) = flag(args, "--egon") {
                 params["egon"] = json!(e);
             } else {

@@ -1,6 +1,6 @@
 //! The coverage report, the history and the radio bridges.
 
-use egui::{Align, Color32, FontId, Layout, Rect, RichText, Sense, Stroke, StrokeKind, pos2, vec2};
+use egui::{Align, Color32, FontId, Layout, Rect, RichText, Sense, Stroke, pos2, vec2};
 use serde_json::json;
 
 use crate::CoverApp;
@@ -155,6 +155,8 @@ fn header(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens, r: &Report) {
                         "openfiber" => app.tr("from Open Fiber"),
                         "polyline" => app.tr("from the street"),
                         "street" => app.tr("from the street's buildings"),
+                        "geocoded" => app.tr("geocoded"),
+                        "manual" => app.tr("by hand"),
                         _ => "",
                     };
                     format!("{}: {:.5}, {:.5} ({src})", app.tr("Coordinates"), p.lat, p.lon)
@@ -182,6 +184,23 @@ fn header(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens, r: &Report) {
             ui.add_space(4.0);
             ui.label(RichText::new(notes.join(" · ")).small().color(Color32::from_rgb(0xf0, 0xa2, 0x0c)));
         }
+        // Coordinates by hand: for case sparse, or to correct a point.
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(app.tr("Set the point by hand")).small().color(t.muted));
+            ui.add(egui::TextEdit::singleline(&mut app.manual_lat).hint_text("39.2238").desired_width(90.0));
+            ui.add(egui::TextEdit::singleline(&mut app.manual_lon).hint_text("9.1217").desired_width(90.0));
+            if ui.small_button(app.tr("Use these coordinates")).clicked() {
+                let (lat, lon) = (app.manual_lat.clone(), app.manual_lon.clone());
+                app.verify_at(&r.civico.egon, &lat, &lon);
+            }
+            if let Some(p) = r.point {
+                let url = format!("https://www.openstreetmap.org/?mlat={:.6}&mlon={:.6}#map=17/{:.6}/{:.6}", p.lat, p.lon, p.lat, p.lon);
+                if ui.small_button(app.tr("Open in OpenStreetMap")).clicked() {
+                    app.requests.push(crate::Request::OpenUrl(url));
+                }
+            }
+        });
     });
     ui.add_space(10.0);
 }
@@ -254,7 +273,33 @@ fn radar(ui: &mut egui::Ui, t: &Tokens, r: &Report, size: f32) {
     }
 }
 
+fn map_card(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens, r: &Report) {
+    if r.point.is_none() {
+        return;
+    }
+    let template = app.session.config().preferences.tiles_url.clone();
+    card(ui, t, app.tr("Map"), |ui| {
+        crate::map::report_map(&mut app.map, ui, t, r, &template, 380.0);
+        ui.label(
+            RichText::new(app.tr("Drag to move, scroll with Ctrl to zoom. Lines: links with a working budget; dashed: within reach but weak."))
+                .small()
+                .color(t.muted),
+        );
+    });
+    ui.add_space(10.0);
+}
+
+fn quality_text(app: &CoverApp, q: &str) -> &'static str {
+    match q {
+        "excellent" => app.tr("Excellent"),
+        "good" => app.tr("Good"),
+        "marginal" => app.tr("Marginal"),
+        _ => app.tr("Insufficient"),
+    }
+}
+
 fn radio_card(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens, r: &Report) {
+    let p = app.session.config().preferences.radio.clone();
     card(ui, t, app.tr("Radio bridges"), |ui| {
         if r.radio.is_empty() {
             ui.label(
@@ -268,21 +313,87 @@ fn radio_card(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens, r: &Report) {
             );
             return;
         }
+        ui.label(
+            RichText::new(format!(
+                "{}: {:.1} GHz · {:.0} MHz · TX {:.0} dBm · {:.0}/{:.0} dBi · EIRP {:.0} dBm · {} {:.0} dBm · {} {:.0} dB",
+                app.tr("Link budget"),
+                p.frequency_ghz,
+                p.channel_mhz,
+                p.tx_power_dbm,
+                p.bridge_gain_dbi,
+                p.client_gain_dbi,
+                p.eirp_dbm(),
+                app.tr("min RX"),
+                p.min_rx_dbm,
+                app.tr("fade margin"),
+                p.fade_margin_db
+            ))
+            .small()
+            .color(t.muted),
+        );
+        ui.add_space(4.0);
         ui.horizontal_top(|ui| {
-            radar(ui, t, r, 220.0);
+            radar(ui, t, r, 200.0);
             ui.add_space(8.0);
             ui.vertical(|ui| {
-                egui::Grid::new("radio").spacing(vec2(10.0, 3.0)).show(ui, |ui| {
-                    for h in &r.radio {
-                        light(ui, if h.in_reach { Status::Covered } else { Status::NotCovered }, 10.0);
-                        ui.label(RichText::new(&h.bridge.name).small().color(t.ui_text));
-                        ui.label(RichText::new(format!("{:.1} {}", h.distance_m / 1000.0, app.tr("km"))).small());
-                        ui.label(RichText::new(format!("{}° {}", h.bearing_deg.round(), h.compass)).small().color(t.muted));
-                        ui.label(RichText::new(format!("{} {}", app.tr("Band"), h.bridge.band)).small().color(t.muted));
-                        ui.label(RichText::new(&h.bridge.state).small().color(t.muted));
+                egui::ScrollArea::horizontal().show(ui, |ui| {
+                    egui::Grid::new("radio").striped(true).spacing(vec2(10.0, 3.0)).show(ui, |ui| {
+                        for h in [
+                            app.tr("Bridge"),
+                            app.tr("Distance"),
+                            app.tr("Bearing"),
+                            app.tr("Band"),
+                            "RX",
+                            app.tr("Margin"),
+                            app.tr("Rate"),
+                            "Fresnel",
+                            app.tr("Quality"),
+                        ] {
+                            ui.label(RichText::new(h).small().color(t.muted));
+                        }
                         ui.end_row();
-                    }
+                        for h in &r.radio {
+                            let ok = h.in_reach && h.link.as_ref().is_none_or(|l| l.ok());
+                            ui.horizontal(|ui| {
+                                light(
+                                    ui,
+                                    if ok {
+                                        Status::Covered
+                                    } else if h.in_reach {
+                                        Status::Planned
+                                    } else {
+                                        Status::NotCovered
+                                    },
+                                    10.0,
+                                );
+                                ui.label(RichText::new(&h.bridge.name).small().color(t.ui_text));
+                            });
+                            ui.label(RichText::new(format!("{:.1} {}", h.distance_m / 1000.0, app.tr("km"))).small());
+                            ui.label(RichText::new(format!("{}° {}", h.bearing_deg.round(), h.compass)).small().color(t.muted));
+                            ui.label(RichText::new(&h.bridge.band).small().color(t.muted));
+                            match &h.link {
+                                Some(l) => {
+                                    ui.label(RichText::new(format!("{:.0} dBm", l.rx_dbm)).small());
+                                    ui.label(RichText::new(format!("{:+.0} dB", l.margin_db)).small().color(if l.ok() {
+                                        t.ui_text
+                                    } else {
+                                        Color32::from_rgb(0xe5, 0x48, 0x4d)
+                                    }));
+                                    ui.label(RichText::new(format!("~{:.0} Mbit/s", l.rate_mbps)).small());
+                                    ui.label(RichText::new(format!("{:.1} m", l.fresnel_m)).small().color(t.muted));
+                                    ui.label(RichText::new(quality_text(app, &l.quality)).small());
+                                }
+                                None => {
+                                    for _ in 0..5 {
+                                        ui.label("");
+                                    }
+                                }
+                            }
+                            ui.end_row();
+                        }
+                    });
                 });
+                ui.label(RichText::new(app.tr("Clear path assumed: the terrain is not checked yet.")).small().color(t.muted));
             });
         });
     });
@@ -373,6 +484,7 @@ pub fn show(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
                         ui.set_max_width(col);
                         provider_card(app, ui, t, &r, Provider::OpenFiber, Some("No Open Fiber row for this civico"));
                         openfiber_card(app, ui, t, &r);
+                        map_card(app, ui, t, &r);
                         radio_card(app, ui, t, &r);
                         cells_card(app, ui, t, &r);
                     });
@@ -383,6 +495,7 @@ pub fn show(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
                 openfiber_card(app, ui, t, &r);
                 provider_card(app, ui, t, &r, Provider::Fastweb, Some("No Fastweb row for this civico"));
                 provider_card(app, ui, t, &r, Provider::Own, None);
+                map_card(app, ui, t, &r);
                 radio_card(app, ui, t, &r);
                 cells_card(app, ui, t, &r);
             }
@@ -467,35 +580,10 @@ pub fn bridges(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
                 ui.label(RichText::new(app.tr("No radio bridge in the database")).color(t.muted));
                 return;
             }
-            let points: Vec<(crate::core::geo::Point, &crate::core::model::Bridge)> = list.iter().filter_map(|b| b.point().map(|p| (p, b))).collect();
-            if points.len() >= 2 {
+            let template = app.session.config().preferences.tiles_url.clone();
+            if list.iter().any(|b| b.point().is_some()) {
                 card(ui, t, "", |ui| {
-                    let w = ui.available_width().min(760.0);
-                    let (rect, _) = ui.allocate_exact_size(vec2(w, 360.0), Sense::hover());
-                    let (mut lat0, mut lat1, mut lon0, mut lon1) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
-                    for (p, _) in &points {
-                        lat0 = lat0.min(p.lat);
-                        lat1 = lat1.max(p.lat);
-                        lon0 = lon0.min(p.lon);
-                        lon1 = lon1.max(p.lon);
-                    }
-                    let (dlat, dlon) = ((lat1 - lat0).max(0.01), (lon1 - lon0).max(0.01));
-                    let inner = rect.shrink(24.0);
-                    let p = ui.painter();
-                    p.rect_filled(rect, 8.0, t.panel);
-                    for (pt, b) in &points {
-                        let x = inner.left() + ((pt.lon - lon0) / dlon) as f32 * inner.width();
-                        let y = inner.bottom() - ((pt.lat - lat0) / dlat) as f32 * inner.height();
-                        let color = match b.band.to_ascii_uppercase().as_str() {
-                            "A" => Color32::from_rgb(0x22, 0xa0, 0x6b),
-                            "B" => Color32::from_rgb(0x1f, 0x9a, 0xb8),
-                            "C" => Color32::from_rgb(0xf0, 0xa2, 0x0c),
-                            _ => t.muted,
-                        };
-                        p.circle_filled(pos2(x, y), 6.0, color);
-                        p.text(pos2(x + 8.0, y), egui::Align2::LEFT_CENTER, &b.name, FontId::proportional(11.0), t.ui_text);
-                    }
-                    p.rect_stroke(rect, 8.0, Stroke::new(1.0, t.border), StrokeKind::Inside);
+                    crate::map::bridges_map(&mut app.map, ui, t, &list, &template, 420.0);
                 });
                 ui.add_space(10.0);
             }

@@ -26,6 +26,10 @@ pub struct SettingsForm {
     pub cells_radius: String,
     pub max_cells: String,
     pub rules: String,
+    pub geocode_url: String,
+    pub tiles_url: String,
+    /// The radio parameters as text: (key, label, value).
+    pub radio: Vec<(&'static str, &'static str, String)>,
 }
 
 impl SettingsForm {
@@ -48,6 +52,20 @@ impl SettingsForm {
         self.cells_radius = p.cells_radius_km.to_string();
         self.max_cells = p.max_cells.to_string();
         self.rules = p.rules.iter().map(|r| format!("{}={}", r.value, r.status.code())).collect::<Vec<_>>().join("\n");
+        self.geocode_url = p.geocode_url.clone();
+        self.tiles_url = p.tiles_url.clone();
+        let r = &p.radio;
+        self.radio = vec![
+            ("frequency_ghz", "Frequency (GHz)", r.frequency_ghz.to_string()),
+            ("channel_mhz", "Channel width (MHz)", r.channel_mhz.to_string()),
+            ("tx_power_dbm", "TX power (dBm)", r.tx_power_dbm.to_string()),
+            ("bridge_gain_dbi", "Bridge/sector antenna gain (dBi)", r.bridge_gain_dbi.to_string()),
+            ("client_gain_dbi", "Customer antenna gain (dBi)", r.client_gain_dbi.to_string()),
+            ("cable_loss_db", "Cable losses per side (dB)", r.cable_loss_db.to_string()),
+            ("fade_margin_db", "Fade margin (dB)", r.fade_margin_db.to_string()),
+            ("min_rx_dbm", "Minimum RX for a usable link (dBm)", r.min_rx_dbm.to_string()),
+            ("client_height_m", "Customer antenna height (m)", r.client_height_m.to_string()),
+        ];
         self.loaded = true;
     }
 }
@@ -181,6 +199,16 @@ pub fn show(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
                     ui.end_row();
                 });
                 ui.add_space(6.0);
+                egui::Grid::new("geo").spacing(vec2(12.0, 8.0)).show(ui, |ui| {
+                    ui.label(app.tr("Geocoder (Nominatim URL)"));
+                    ui.add_sized([360.0, 22.0], egui::TextEdit::singleline(&mut app.settings.geocode_url).hint_text("http://nominatim:8080"));
+                    ui.end_row();
+                    ui.label(app.tr("Map tiles URL"));
+                    ui.add_sized([360.0, 22.0], egui::TextEdit::singleline(&mut app.settings.tiles_url).hint_text("https://tile.openstreetmap.org/{z}/{x}/{y}.png"));
+                    ui.end_row();
+                });
+                ui.label(RichText::new(app.tr("The geocoder is asked only when no table places the civico; the answer is remembered.")).small().color(t.muted));
+                ui.add_space(6.0);
                 ui.label(RichText::new(app.tr("Wording rules")).color(t.muted));
                 ui.label(
                     RichText::new(app.tr("One per line: VALUE=covered|planned|not_covered|unknown (VALUE* for a prefix)")).small().color(t.muted),
@@ -191,6 +219,29 @@ pub fn show(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
                     save_prefs = true;
                 }
             });
+            ui.add_space(12.0);
+            let mut save_radio = false;
+            section(ui, t, app.tr("Radio links (5 GHz)"), |ui| {
+                ui.label(RichText::new(app.tr("The equipment on both ends; the sectors on the bridges use the same figures. Presets: 5.5 GHz, 40 MHz, 23 dBm, 23 dBi.")).small().color(t.muted));
+                ui.add_space(6.0);
+                egui::Grid::new("radio-params").spacing(vec2(12.0, 8.0)).show(ui, |ui| {
+                    for (_, label, value) in &mut app.settings.radio {
+                        ui.label(app.language.tr(label));
+                        ui.add(egui::TextEdit::singleline(value).desired_width(100.0));
+                        ui.end_row();
+                    }
+                });
+                ui.add_space(8.0);
+                if primary_button(ui, t, None, app.tr("Save radio settings")).clicked() {
+                    save_radio = true;
+                }
+            });
+            if save_radio {
+                let radio: serde_json::Map<String, Value> = app.settings.radio.iter().map(|(k, _, v)| ((*k).to_string(), json!(v.trim()))).collect();
+                if app.run("prefs.set", json!({"radio": radio})).is_some() {
+                    app.settings.loaded = false;
+                }
+            }
             if save_prefs {
                 let f = &app.settings;
                 let reach: serde_json::Map<String, Value> =
@@ -200,6 +251,7 @@ pub fn show(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
                 let params = json!({
                     "log_requests": f.log_requests, "log_to_database": f.log_to_database, "radio_reach_km": reach, "max_bridges": f.max_bridges.trim(), "cells": f.cells,
                     "cells_radius_km": f.cells_radius.trim(), "max_cells": f.max_cells.trim(), "rules": rules,
+                    "geocode_url": f.geocode_url.trim(), "tiles_url": f.tiles_url.trim(),
                 });
                 if app.run("prefs.set", params).is_some() {
                     app.settings.loaded = false;
