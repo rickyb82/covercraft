@@ -67,6 +67,43 @@ The map uses OpenStreetMap's tiles by default (`https://tile.openstreetmap.org/{
 see the OSMF tile usage policy for anything beyond light use); `tiles_url` points it at your
 own tile server.
 
+## Mobile cells (OpenCelliD)
+
+The report's "Mobile cells" come from two places, both OpenCelliD (crowdsourced, CC BY-SA 4.0):
+
+1. **Live, per verification** (recommended: nothing to import). With the preference
+   `opencellid_token` set (Settings → Preferences → OpenCelliD token, or
+   `covercraft-cli prefs opencellid_token=pk.…`), every verification asks OpenCelliD's area
+   service (`/cell/getInArea`) for the cells within about 1 km of the point (the service caps
+   the box at 4 km² and answers 50 cells per page; CoverCraft reads up to 4 pages). They join
+   the table's cells, marked "live" in the report; the answer is remembered for the session, so
+   a spot is asked once. The token is free: register at opencellid.org and copy the API key.
+   The web site's own map calls the same service with a key, so this is the sanctioned way to
+   do what the page does; reading the page's HTML would break at its next change and is
+   against its terms. When the service fails (bad token, no network) the report says so in a
+   note and shows the table's cells.
+2. **The `cell_db` table**, an OpenCelliD export loaded as it is (same columns: `radio, mcc,
+   net, area, cell, unit, lon, lat, range, samples, changeable, created, updated,
+   averageSignal`). Exports hold the cells seen in the last 18 months, so the table ages:
+   `covercraft-cli cells` says how many rows it has and the span of their `updated` stamps.
+   To refresh it, download Italy's file with the same token and import it; the rows of that
+   country are replaced, other countries' rows stay. The database user must be allowed to
+   `DELETE` and `INSERT` on `cell_db` (the verification user is read-only: give the writer
+   with `--db-user`/`--db-password`):
+
+```sh
+curl -fsSL "https://opencellid.org/ocid/downloads?token=$OCID_TOKEN&type=mcc&file=222.csv.gz" -o 222.csv.gz
+docker cp 222.csv.gz covercraft:/tmp/
+docker exec covercraft covercraft-cli cells import /tmp/222.csv.gz --db-user netmap_rw --db-password '…'
+docker exec covercraft covercraft-cli cells          # cell_db: 412 309 cells, updated between … and …
+```
+
+`--net 1,10,88,50` keeps only those networks (TIM, Vodafone, WindTre, Iliad) and touches only
+their rows. A cron entry that runs the three commands weekly keeps the table current.
+
+A phone app such as NetMonster shows the live network, which is always current, but keeps its
+positions in its own closed database: there is nothing to import from it.
+
 ## Radio links
 
 The report estimates every bridge's link with a free-space budget (5.5 GHz, 40 MHz, 23 dBm,

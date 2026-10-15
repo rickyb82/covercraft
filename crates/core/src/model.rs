@@ -142,6 +142,9 @@ pub struct Cell {
     pub lon: String,
     pub range: String,
     pub samples: String,
+    /// Where the cell comes from: `db` (the `cell_db` table) or `opencellid` (live).
+    #[serde(default)]
+    pub source: String,
 }
 
 impl Cell {

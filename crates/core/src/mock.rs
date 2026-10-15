@@ -315,6 +315,7 @@ impl MockSource {
             lon: lon.into(),
             range: range.into(),
             samples: "40".into(),
+            source: String::new(),
         };
         let cells = vec![
             cell("LTE", "1", "39.2160", "9.1120", "900"),

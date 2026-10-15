@@ -118,6 +118,8 @@ pub struct Preferences {
     pub radio: crate::radio::RadioParams,
     /// A Nominatim server (`http://nominatim:8080`) used when the tables give no point; empty = off.
     pub geocode_url: String,
+    /// OpenCelliD API token: live cells around the point join the table's (empty = off).
+    pub opencellid_token: String,
     /// Map tiles (`https://tile.openstreetmap.org/{z}/{x}/{y}.png` style); empty = OpenStreetMap.
     pub tiles_url: String,
 }
@@ -137,6 +139,7 @@ impl Default for Preferences {
             rules: Vec::new(),
             radio: crate::radio::RadioParams::default(),
             geocode_url: String::new(),
+            opencellid_token: String::new(),
             tiles_url: String::new(),
         }
     }
@@ -184,6 +187,7 @@ impl Preferences {
                 }
                 "radio" => self.radio.apply(val)?,
                 "geocode_url" => self.geocode_url = crate::limits::clip(val.as_str().unwrap_or_default().trim().trim_end_matches('/')),
+                "opencellid_token" => self.opencellid_token = crate::limits::clip(val.as_str().unwrap_or_default().trim()),
                 "tiles_url" => self.tiles_url = crate::limits::clip(val.as_str().unwrap_or_default().trim()),
                 "rules" => {
                     let Some(list) = val.as_array() else { return Err(Error::Invalid("rules (array of {value, status})".into())) };
@@ -355,9 +359,10 @@ mod tests {
         assert!(c.db.apply(&json!({"kind": "oracle"})).is_err());
         c.db.kind = "mysql".into();
         assert!(c.db.apply(&json!({"port": 70000})).is_err());
-        c.preferences.apply(&json!({"language": "it", "theme": "dark", "radio_reach_km": {"a": 25}, "max_bridges": 5, "rules": [{"value": "X", "status": "covered"}], "radio": {"tx_power_dbm": 20}, "geocode_url": "http://nominatim:8080/"})).unwrap();
+        c.preferences.apply(&json!({"language": "it", "theme": "dark", "radio_reach_km": {"a": 25}, "max_bridges": 5, "rules": [{"value": "X", "status": "covered"}], "radio": {"tx_power_dbm": 20}, "geocode_url": "http://nominatim:8080/", "opencellid_token": " pk.abc "})).unwrap();
         assert_eq!(c.preferences.radio.tx_power_dbm, 20.0);
         assert_eq!(c.preferences.geocode_url, "http://nominatim:8080");
+        assert_eq!(c.preferences.opencellid_token, "pk.abc");
         assert_eq!(c.preferences.reach_m("a"), 25_000.0);
         assert_eq!(c.preferences.reach_m("Z"), 4_000.0);
         assert!(c.preferences.apply(&json!({"nope": 1})).is_err());

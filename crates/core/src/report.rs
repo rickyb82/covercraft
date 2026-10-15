@@ -536,12 +536,13 @@ pub fn build(inputs: Inputs, prefs: &Preferences) -> Report {
 /// person set or a cached geocoding (source name included); `geocoder` is asked only when
 /// nothing places the civico.
 pub fn gather(source: &mut dyn CoverageSource, comune: &Comune, civico: &Civico, prefs: &Preferences) -> Result<Report> {
-    gather_with(source, None, None, comune, civico, prefs)
+    gather_with(source, None, None, None, comune, civico, prefs)
 }
 
 pub fn gather_with(
     source: &mut dyn CoverageSource,
     geocoder: Option<&mut dyn crate::geocode::Geocoder>,
+    cell_lookup: Option<&mut dyn crate::cells::CellLookup>,
     given: Option<(Point, String)>,
     comune: &Comune,
     civico: &Civico,
@@ -588,13 +589,33 @@ pub fn gather_with(
     }
     let point = given_point.as_ref().map(|(p, _)| *p).or_else(|| locate(&openfiber, polyline.as_deref(), &street_points).0);
     let bridges = if point.is_some() { source.bridges()? } else { Vec::new() };
-    let cells = match point {
+    let mut cells = match point {
         Some(p) if prefs.cells => {
             let half = (prefs.cells_radius_km.clamp(0.1, 50.0) / 111.0).max(0.001);
             source.cells(p.lat, p.lon, half, limits::ROWS)?
         }
         _ => Vec::new(),
     };
+    for c in &mut cells {
+        if c.source.is_empty() {
+            c.source = "db".into();
+        }
+    }
+    // The live service adds the cells the table lacks (and fails without hiding the report).
+    if let (Some(p), true, Some(l)) = (point, prefs.cells, cell_lookup) {
+        match l.cells_near(p, limits::ROWS) {
+            Ok(live) => {
+                crate::cells::merge(&mut cells, live);
+            }
+            Err(e) => notes_extra.push(format!(
+                "cells_failed: {}",
+                match &e {
+                    crate::Error::Invalid(m) | crate::Error::Database(m) => m.clone(),
+                    other => other.to_string(),
+                }
+            )),
+        }
+    }
     let mut r = build(
         Inputs { civico: civico.clone(), tim, openfiber, statuses, xgspon_pops, fastweb, own, polyline, street_points, given_point, bridges, cells },
         prefs,
@@ -700,6 +721,43 @@ mod tests {
         }
     }
 
+    struct FakeLookup(Option<Vec<Cell>>);
+    impl crate::cells::CellLookup for FakeLookup {
+        fn cells_near(&mut self, _p: Point, _limit: usize) -> Result<Vec<Cell>> {
+            self.0.clone().ok_or_else(|| crate::Error::Invalid("opencellid: Invalid API key (code 2)".into()))
+        }
+    }
+
+    #[test]
+    fn live_cells_join_the_tables_and_a_failure_is_a_note() {
+        let mut m = crate::mock::MockSource::demo();
+        let cagliari = m.comuni[0].clone();
+        let roma = m.civici.iter().find(|c| c.egon == "100010").cloned().unwrap();
+        let prefs = Preferences::default();
+        let base = gather(&mut m, &cagliari, &roma, &prefs).unwrap();
+        assert!(!base.cells.is_empty() && base.cells.iter().all(|c| c.cell.source == "db"));
+        let twin = base.cells[0].cell.clone();
+        let fresh = Cell {
+            net: "50".into(),
+            cell: "777".into(),
+            lat: twin.lat.clone(),
+            lon: twin.lon.clone(),
+            range: "500".into(),
+            radio: "NR".into(),
+            mcc: "222".into(),
+            source: "opencellid".into(),
+            ..Default::default()
+        };
+        let mut ok = FakeLookup(Some(vec![twin.clone(), fresh]));
+        let r = gather_with(&mut m, None, Some(&mut ok), None, &cagliari, &roma, &prefs).unwrap();
+        assert_eq!(r.cells.len(), base.cells.len() + 1, "the twin is skipped, the new cell added");
+        assert!(r.cells.iter().any(|c| c.cell.source == "opencellid" && c.operator == "Iliad"));
+        let mut bad = FakeLookup(None);
+        let r = gather_with(&mut m, None, Some(&mut bad), None, &cagliari, &roma, &prefs).unwrap();
+        assert_eq!(r.cells.len(), base.cells.len());
+        assert!(r.notes.iter().any(|n| n.starts_with("cells_failed: opencellid: Invalid API key")), "{:?}", r.notes);
+    }
+
     #[test]
     fn geocoder_and_given_points_place_the_civico() {
         let prefs = Preferences::default();
@@ -708,18 +766,18 @@ mod tests {
         let marconi = m.civici.iter().find(|c| c.egon == "100300").cloned().unwrap();
         m.polylines.clear();
         let mut g = FakeGeocoder(Point::new(39.25, 9.15), 0);
-        let r = gather_with(&mut m, Some(&mut g), None, &cagliari, &marconi, &prefs).unwrap();
+        let r = gather_with(&mut m, Some(&mut g), None, None, &cagliari, &marconi, &prefs).unwrap();
         assert_eq!((r.point_source.as_str(), g.1), ("geocoded", 1));
         assert!(!r.radio.is_empty() && r.radio[0].link.is_some());
         // A given point wins and the geocoder is not asked.
-        let r = gather_with(&mut m, Some(&mut g), Some((Point { lat: 39.0, lon: 9.0 }, "manual".into())), &cagliari, &marconi, &prefs).unwrap();
+        let r = gather_with(&mut m, Some(&mut g), None, Some((Point { lat: 39.0, lon: 9.0 }, "manual".into())), &cagliari, &marconi, &prefs).unwrap();
         assert_eq!((r.point_source.as_str(), g.1), ("manual", 1));
         // A civico the tables place never asks the geocoder.
         let roma = m.civici[0].clone();
-        let r = gather_with(&mut m, Some(&mut g), None, &cagliari, &roma, &prefs).unwrap();
+        let r = gather_with(&mut m, Some(&mut g), None, None, &cagliari, &roma, &prefs).unwrap();
         assert_eq!((r.point_source.as_str(), g.1), ("openfiber", 1));
         let mut none = FakeGeocoder(None, 0);
-        let r = gather_with(&mut m, Some(&mut none), None, &cagliari, &marconi, &prefs).unwrap();
+        let r = gather_with(&mut m, Some(&mut none), None, None, &cagliari, &marconi, &prefs).unwrap();
         assert!(r.notes.contains(&"no_point".to_string()));
     }
 

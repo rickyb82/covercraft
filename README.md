@@ -44,7 +44,9 @@ nelle risposte.
    possono anche scrivere a mano. Da lì **mappa** (OpenStreetMap), distanza, direzione e
    **bilancio del collegamento** verso ogni ponte radio (`radio_table`, 5 GHz / 23 dBm / 23 dBi
    preimpostati e modificabili: potenza ricevuta, margine, velocità stimata, zona di Fresnel) e
-   le celle di `cell_db`.
+   le celle di `cell_db` (un'esportazione OpenCelliD, da rinfrescare con `covercraft-cli cells
+   import`) più, con un token OpenCelliD, le celle in tempo reale intorno al punto (vedi
+   `docs/deploy.md`).
 5. Ogni stato è un semaforo (coperto / pianificato / non coperto / non noto) **con accanto il
    valore originale della cella**; le parole che il semaforo non conosce si insegnano nelle
    impostazioni (regole `VALORE=stato`).

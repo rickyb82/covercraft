@@ -25,6 +25,7 @@ ehttp = "0.7"
 web-time = "1"
 mysql = { version = "26", default-features = false, features = ["minimal", "rustls-tls"] }
 rusqlite = { version = "0.37", features = ["bundled"] }
+flate2 = "1"
 
 egui = "0.36"
 eframe = { version = "0.36", default-features = false }

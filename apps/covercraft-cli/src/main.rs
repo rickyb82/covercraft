@@ -17,6 +17,8 @@ const USAGE: &str = "Usage:
   covercraft-cli civici COMUNE STREET_EGON
   covercraft-cli bridges
   covercraft-cli history [--user NAME] [--all] [--limit N]
+  covercraft-cli cells                                   # how many mobile cells cell_db holds and how old
+  covercraft-cli cells import FILE.csv[.gz] [--mcc 222] [--net 1,10,88,50] [--db-user U --db-password PW]
   covercraft-cli db [--kind mysql|sqlite|demo] [--host H] [--port P] [--user U] [--password PW] [--database D] [--path FILE]
   covercraft-cli prefs [KEY=VALUE ...]
   covercraft-cli run --cmd 'id={\"json\"}' [--cmd ...]
@@ -55,6 +57,10 @@ fn positional(args: &[String]) -> Vec<String> {
         "--token",
         "--bind",
         "--static",
+        "--mcc",
+        "--net",
+        "--db-user",
+        "--db-password",
     ];
     let mut out = Vec::new();
     let mut skip = false;
@@ -83,7 +89,12 @@ fn session(args: &[String]) -> Session {
             Some(h) => Paths::under(std::path::Path::new(&h)),
             None => Paths::default_dirs(),
         };
-        Session::with_geocoder(covercraft_db::factory(), Some(covercraft_db::geocoder_factory()), Some(paths))
+        Session::with_lookups(
+            covercraft_db::factory(),
+            Some(covercraft_db::geocoder_factory()),
+            Some(covercraft_db::cell_lookup_factory()),
+            Some(paths),
+        )
     };
     if let Some(l) = flag(args, "--lang").or_else(|| std::env::var("COVERCRAFT_LANG").ok()) {
         let _ = s.execute("prefs.set", &json!({"language": l}));
@@ -92,6 +103,27 @@ fn session(args: &[String]) -> Session {
         s.set_user(&u);
     }
     s
+}
+
+/// An OpenCelliD `updated` stamp (Unix seconds) as a date, else as it is.
+fn stamp(s: &str) -> String {
+    match s.trim().parse::<i64>() {
+        Ok(secs) if secs > 0 => {
+            let days = secs.div_euclid(86_400);
+            // Civil date from days since 1970-01-01 (Howard Hinnant's algorithm).
+            let z = days + 719_468;
+            let era = z.div_euclid(146_097);
+            let doe = z.rem_euclid(146_097);
+            let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+            let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+            let mp = (5 * doy + 2) / 153;
+            let d = doy - (153 * mp + 2) / 5 + 1;
+            let m = if mp < 10 { mp + 3 } else { mp - 9 };
+            let y = yoe + era * 400 + i64::from(m <= 2);
+            format!("{y:04}-{m:02}-{d:02}")
+        }
+        _ => s.to_string(),
+    }
 }
 
 fn print_json(v: &Value) {
@@ -210,6 +242,43 @@ fn run(args: &[String]) -> Result<(), String> {
                         b["band"].as_str().unwrap_or_default(),
                         b["state"].as_str().unwrap_or_default()
                     );
+                }
+            }
+            Ok(())
+        }
+        Some("cells") => {
+            let s = session(args);
+            let mut db = s.config().db.clone();
+            if let Some(u) = flag(args, "--db-user") {
+                db.user = u;
+            }
+            let password =
+                flag(args, "--db-password").or_else(|| std::env::var("COVERCRAFT_DB_PASSWORD").ok()).unwrap_or_else(|| s.db_password().to_string());
+            let mut src = covercraft_db::open_sql(&db, &password).map_err(|e| e.to_string())?;
+            match pos.get(1).map(String::as_str) {
+                Some("import") => {
+                    let file = pos.get(2).ok_or("cells import: give the OpenCelliD export (FILE.csv or FILE.csv.gz)")?;
+                    let mcc = flag(args, "--mcc").unwrap_or_else(|| "222".into());
+                    let nets: Vec<String> = flag(args, "--net").map(|n| n.split(',').map(str::to_string).collect()).unwrap_or_default();
+                    let reader = covercraft_db::cells::open_export(file).map_err(|e| e.to_string())?;
+                    let r = covercraft_db::cells::import(&mut src, reader, &mcc, &nets).map_err(|e| e.to_string())?;
+                    if json_out {
+                        print_json(&json!({"read": r.read, "written": r.written, "deleted": r.deleted, "skipped": r.skipped}));
+                    } else {
+                        println!(
+                            "cell_db: {} rows of MCC {mcc} replaced by {} from {file} ({} lines read, {} skipped)",
+                            r.deleted, r.written, r.read, r.skipped
+                        );
+                    }
+                }
+                Some(other) => return Err(format!("cells: unknown action {other:?} (import)")),
+                None => {
+                    let (count, oldest, newest) = covercraft_db::cells::summary(&mut src).map_err(|e| e.to_string())?;
+                    if json_out {
+                        print_json(&json!({"count": count, "oldest": oldest, "newest": newest}));
+                    } else {
+                        println!("cell_db: {count} cells, updated between {} and {}", stamp(&oldest), stamp(&newest));
+                    }
                 }
             }
             Ok(())

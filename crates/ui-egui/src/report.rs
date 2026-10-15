@@ -415,7 +415,12 @@ fn cells_card(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens, r: &Report) {
                     light(ui, if c.in_range { Status::Covered } else { Status::Unknown }, 10.0);
                     ui.label(RichText::new(&c.operator).small());
                 });
-                ui.label(RichText::new(&c.cell.radio).small());
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(&c.cell.radio).small());
+                    if c.cell.source == "opencellid" {
+                        ui.label(RichText::new(app.tr("live")).small().color(t.accent));
+                    }
+                });
                 ui.label(RichText::new(format!("{:.0} {}", c.distance_m, app.tr("m"))).small());
                 ui.label(RichText::new(format!("{} {}", c.cell.range, app.tr("m"))).small().color(t.muted));
                 ui.end_row();

@@ -69,7 +69,12 @@ fn main() -> Result<(), String> {
             Some(h) => Paths::under(std::path::Path::new(&h)),
             None => Paths::default_dirs(),
         };
-        Session::with_geocoder(covercraft_db::factory(), Some(covercraft_db::geocoder_factory()), Some(paths))
+        Session::with_lookups(
+            covercraft_db::factory(),
+            Some(covercraft_db::geocoder_factory()),
+            Some(covercraft_db::cell_lookup_factory()),
+            Some(paths),
+        )
     };
     let user = user.or_else(|| std::env::var("USER").ok()).or_else(|| std::env::var("USERNAME").ok()).unwrap_or_default();
     session.set_user(&user);

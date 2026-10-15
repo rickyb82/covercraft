@@ -170,6 +170,11 @@ pub(super) fn translate(text: &str) -> Option<&'static str> {
         "Open in OpenStreetMap" => "Apri in OpenStreetMap",
         "Coordinates must be two numbers, e.g. 39.2238 and 9.1217" => "Le coordinate sono due numeri, es. 39.2238 e 9.1217",
         "Geocoder (Nominatim URL)" => "Geocodifica (URL Nominatim)",
+        "OpenCelliD token (live cells)" => "Token OpenCelliD (celle in tempo reale)",
+        "With a token (free at opencellid.org), every verification also asks OpenCelliD for the cells within about 1 km of the point; they join the table's." => {
+            "Con un token (gratuito su opencellid.org) ogni verifica chiede a OpenCelliD anche le celle entro circa 1 km dal punto; si aggiungono a quelle della tabella."
+        }
+        "live" => "live",
         "Map tiles URL" => "URL delle tessere della mappa",
         "The geocoder is asked only when no table places the civico; the answer is remembered." => {
             "La geocodifica viene chiesta solo quando nessuna tabella posiziona il civico; la risposta viene ricordata."

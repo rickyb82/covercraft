@@ -50,7 +50,12 @@ impl Hub {
         let mut session = if self.opts.demo {
             Session::demo()
         } else {
-            Session::with_geocoder(self.factory.clone(), Some(covercraft_db::geocoder_factory()), self.opts.paths.clone())
+            Session::with_lookups(
+                self.factory.clone(),
+                Some(covercraft_db::geocoder_factory()),
+                Some(covercraft_db::cell_lookup_factory()),
+                self.opts.paths.clone(),
+            )
         };
         session.set_user(user);
         if let Some(l) = &self.opts.lang

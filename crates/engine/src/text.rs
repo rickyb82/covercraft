@@ -173,12 +173,14 @@ pub fn note_text(note: &str, italian: bool) -> String {
         ("fastweb_missing", false) => "No Fastweb row for this civico".into(),
         ("no_point", true) => "Coordinate non note: ponti radio e celle non calcolati".into(),
         ("no_point", false) => "No coordinates: radio bridges and cells not computed".into(),
-        (other, italian) => match other.strip_prefix("geocode_failed: ") {
-            Some(why) if italian => format!(
+        (other, italian) => match (other.strip_prefix("geocode_failed: "), other.strip_prefix("cells_failed: ")) {
+            (Some(why), _) if italian => format!(
                 "Geocodifica non riuscita ({why}): controlla che Nominatim sia avviato e abbia finito l'import, oppure inserisci le coordinate a mano"
             ),
-            Some(why) => format!("Geocoding failed ({why}): check that Nominatim is running and its import is done, or set the point by hand"),
-            None => other.to_string(),
+            (Some(why), _) => format!("Geocoding failed ({why}): check that Nominatim is running and its import is done, or set the point by hand"),
+            (_, Some(why)) if italian => format!("Celle in tempo reale non disponibili ({why}): mostrate solo quelle della tabella"),
+            (_, Some(why)) => format!("Live cells unavailable ({why}): only the table's are shown"),
+            _ => other.to_string(),
         },
     }
 }
@@ -211,5 +213,9 @@ mod tests {
         let n = note_text("geocode_failed: geocoder http://nominatim:8080: Connection refused (os error 111)", true);
         assert!(n.starts_with("Geocodifica non riuscita (geocoder http://nominatim:8080: Connection refused") && n.contains("a mano"), "{n}");
         assert!(note_text("geocode_failed: x", false).starts_with("Geocoding failed (x)"));
+        assert!(
+            note_text("cells_failed: opencellid: Invalid API key (code 2)", true)
+                .starts_with("Celle in tempo reale non disponibili (opencellid: Invalid API key")
+        );
     }
 }

@@ -27,6 +27,7 @@ pub struct SettingsForm {
     pub max_cells: String,
     pub rules: String,
     pub geocode_url: String,
+    pub opencellid_token: String,
     pub tiles_url: String,
     /// The radio parameters as text: (key, label, value).
     pub radio: Vec<(&'static str, &'static str, String)>,
@@ -53,6 +54,7 @@ impl SettingsForm {
         self.max_cells = p.max_cells.to_string();
         self.rules = p.rules.iter().map(|r| format!("{}={}", r.value, r.status.code())).collect::<Vec<_>>().join("\n");
         self.geocode_url = p.geocode_url.clone();
+        self.opencellid_token = p.opencellid_token.clone();
         self.tiles_url = p.tiles_url.clone();
         let r = &p.radio;
         self.radio = vec![
@@ -206,8 +208,12 @@ pub fn show(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
                     ui.label(app.tr("Map tiles URL"));
                     ui.add_sized([360.0, 22.0], egui::TextEdit::singleline(&mut app.settings.tiles_url).hint_text("https://tile.openstreetmap.org/{z}/{x}/{y}.png"));
                     ui.end_row();
+                    ui.label(app.tr("OpenCelliD token (live cells)"));
+                    ui.add_sized([360.0, 22.0], egui::TextEdit::singleline(&mut app.settings.opencellid_token).password(true).hint_text("pk.…"));
+                    ui.end_row();
                 });
                 ui.label(RichText::new(app.tr("The geocoder is asked only when no table places the civico; the answer is remembered.")).small().color(t.muted));
+                ui.label(RichText::new(app.tr("With a token (free at opencellid.org), every verification also asks OpenCelliD for the cells within about 1 km of the point; they join the table's.")).small().color(t.muted));
                 ui.add_space(6.0);
                 ui.label(RichText::new(app.tr("Wording rules")).color(t.muted));
                 ui.label(
@@ -251,7 +257,7 @@ pub fn show(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
                 let params = json!({
                     "log_requests": f.log_requests, "log_to_database": f.log_to_database, "radio_reach_km": reach, "max_bridges": f.max_bridges.trim(), "cells": f.cells,
                     "cells_radius_km": f.cells_radius.trim(), "max_cells": f.max_cells.trim(), "rules": rules,
-                    "geocode_url": f.geocode_url.trim(), "tiles_url": f.tiles_url.trim(),
+                    "geocode_url": f.geocode_url.trim(), "tiles_url": f.tiles_url.trim(), "opencellid_token": f.opencellid_token.trim(),
                 });
                 if app.run("prefs.set", params).is_some() {
                     app.settings.loaded = false;

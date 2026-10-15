@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::time::Duration;
 
 pub use covercraft_core as core;
+use covercraft_core::cells::CellLookupFactory;
 use covercraft_core::config::{Config, Paths, Secrets};
 use covercraft_core::geo::Point;
 use covercraft_core::geocode::GeocoderFactory;
@@ -170,11 +171,21 @@ impl Session {
 
     /// The same, with a geocoder factory (asked when the tables give no point).
     pub fn with_geocoder(factory: SourceFactory, geocoders: Option<GeocoderFactory>, paths: Option<Paths>) -> Self {
+        Self::with_lookups(factory, geocoders, None, paths)
+    }
+
+    /// The same, with the live cell lookup (asked with the OpenCelliD token preference).
+    pub fn with_lookups(
+        factory: SourceFactory,
+        geocoders: Option<GeocoderFactory>,
+        cell_lookups: Option<CellLookupFactory>,
+        paths: Option<Paths>,
+    ) -> Self {
         let (config, secrets) = match &paths {
             Some(p) => (Config::load(&p.config).unwrap_or_default(), Secrets::load(&p.secrets).unwrap_or_default()),
             None => (Config::default(), Secrets::default()),
         };
-        let worker = worker::Worker::start(factory, geocoders, config.db.clone(), secrets.db_password.clone());
+        let worker = worker::Worker::start(factory, geocoders, cell_lookups, config.db.clone(), secrets.db_password.clone());
         let history = paths.as_ref().map(|p| load_history(&history_path(p))).unwrap_or_default();
         let geocache = paths.as_ref().map(|p| load_geocache(&geocache_path(p))).unwrap_or_default();
         Self {
@@ -211,6 +222,11 @@ impl Session {
 
     pub fn has_password(&self) -> bool {
         !self.secrets.db_password.is_empty()
+    }
+
+    /// The database password, for maintenance tools (never returned by a command).
+    pub fn db_password(&self) -> &str {
+        &self.secrets.db_password
     }
 
     pub fn revision(&self) -> u64 {

@@ -245,7 +245,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         id: "prefs.set",
         label: "Change preferences",
-        params: "language, theme, log_requests, log_to_database, geocode_url, tiles_url, radio {frequency_ghz, channel_mhz, tx_power_dbm, bridge_gain_dbi, client_gain_dbi, cable_loss_db, fade_margin_db, min_rx_dbm, client_height_m}, radio_reach_km {A..D}, max_bridges, cells, cells_radius_km, max_cells, rules [{value, status}]",
+        params: "language, theme, log_requests, log_to_database, geocode_url, opencellid_token, tiles_url, radio {frequency_ghz, channel_mhz, tx_power_dbm, bridge_gain_dbi, client_gain_dbi, cable_loss_db, fade_margin_db, min_rx_dbm, client_height_m}, radio_reach_km {A..D}, max_bridges, cells, cells_radius_km, max_cells, rules [{value, status}]",
         local: true,
         run: prefs_set,
     },

@@ -872,6 +872,7 @@ version = "0.1.0"
 dependencies = [
  "covercraft-core",
  "ehttp",
+ "flate2",
  "mysql",
  "rusqlite",
  "serde_json",

@@ -389,6 +389,7 @@ impl CoverageSource for SqlSource {
                 lon: text(r, 6),
                 range: text(r, 7),
                 samples: text(r, 8),
+                source: "db".into(),
             })
             .collect())
     }

@@ -1,8 +1,10 @@
 //! The query thread: it owns the database source and answers jobs one at a time, so the
 //! interface never blocks on the network.
 
+use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
+use covercraft_core::cells::{CellLookup, CellLookupFactory};
 use covercraft_core::config::{DbConfig, Preferences};
 use covercraft_core::geo::Point;
 use covercraft_core::geocode::GeocoderFactory;
@@ -73,6 +75,9 @@ pub struct Worker {
 struct Inner {
     factory: SourceFactory,
     geocoders: Option<GeocoderFactory>,
+    cell_lookups: Option<CellLookupFactory>,
+    /// Live cells already fetched, by point rounded to ~100 m (the service is asked once per spot).
+    cell_cache: HashMap<(i64, i64), Vec<Cell>>,
     source: Option<Box<dyn CoverageSource>>,
     db: DbConfig,
     password: String,
@@ -187,9 +192,19 @@ impl Inner {
                 };
                 let factory = self.geocoders.clone();
                 let mut geocoder: Option<Box<dyn covercraft_core::geocode::Geocoder>> = factory.and_then(|f| f(&prefs.geocode_url));
+                let mut lookup = self
+                    .cell_lookups
+                    .clone()
+                    .and_then(|f| f(&prefs.opencellid_token))
+                    .map(|inner| CachedLookup { inner, cache: std::mem::take(&mut self.cell_cache) });
                 let source = self.source()?;
                 let geocoder_ref = geocoder.as_mut().map(|g| &mut **g as &mut dyn covercraft_core::geocode::Geocoder);
-                let r = report::gather_with(source, geocoder_ref, given, &comune, &target, &prefs)?;
+                let lookup_ref = lookup.as_mut().map(|l| l as &mut dyn CellLookup);
+                let r = report::gather_with(source, geocoder_ref, lookup_ref, given, &comune, &target, &prefs);
+                if let Some(l) = lookup {
+                    self.cell_cache = l.cache;
+                }
+                let r = r?;
                 if log {
                     let answer = crate::report_json(&r);
                     if let Err(e) = self.source()?.log(&user, &request, &answer) {
@@ -206,14 +221,42 @@ impl Inner {
     }
 }
 
+/// Asks the service once per spot: the answer is kept for the session.
+struct CachedLookup {
+    inner: Box<dyn CellLookup>,
+    cache: HashMap<(i64, i64), Vec<Cell>>,
+}
+
+impl CellLookup for CachedLookup {
+    fn cells_near(&mut self, p: Point, limit: usize) -> Result<Vec<Cell>> {
+        let key = ((p.lat * 1000.0).round() as i64, (p.lon * 1000.0).round() as i64);
+        if let Some(c) = self.cache.get(&key) {
+            return Ok(c.clone());
+        }
+        let cells = self.inner.cells_near(p, limit)?;
+        if self.cache.len() >= 1000 {
+            self.cache.clear();
+        }
+        self.cache.insert(key, cells.clone());
+        Ok(cells)
+    }
+}
+
 impl Worker {
-    pub fn start(factory: SourceFactory, geocoders: Option<GeocoderFactory>, db: DbConfig, password: String) -> Self {
+    pub fn start(
+        factory: SourceFactory,
+        geocoders: Option<GeocoderFactory>,
+        cell_lookups: Option<CellLookupFactory>,
+        db: DbConfig,
+        password: String,
+    ) -> Self {
         let (tx, jobs) = channel::<Job>();
         let (events, rx) = channel::<Event>();
         std::thread::Builder::new()
             .name("covercraft-db".into())
             .spawn(move || {
-                let mut inner = Inner { factory, geocoders, source: None, db, password, comuni: Vec::new() };
+                let mut inner =
+                    Inner { factory, geocoders, cell_lookups, cell_cache: HashMap::new(), source: None, db, password, comuni: Vec::new() };
                 while let Ok(job) = jobs.recv() {
                     let kind = job.kind.clone();
                     let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| inner.run(kind))) {

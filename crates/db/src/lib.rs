@@ -6,9 +6,11 @@
 //! pattern before they are put in a statement.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod cells;
 pub mod demo;
 pub mod geocoder;
 mod mysql_exec;
+pub mod opencellid;
 mod sql;
 mod sqlite_exec;
 
@@ -54,6 +56,24 @@ pub fn open(db: &DbConfig, password: &str) -> Result<Box<dyn CoverageSource>> {
         "mysql" => Ok(Box::new(SqlSource::new(Box::new(mysql_exec::MySqlExecutor::connect(db, password)?)))),
         "sqlite" => Ok(Box::new(SqlSource::new(Box::new(sqlite_exec::SqliteExecutor::open(&db.path)?)))),
         _ => Ok(Box::new(covercraft_core::mock::MockSource::demo())),
+    }
+}
+
+/// The live cell lookup apps hand to the engine (OpenCelliD's area service, by token).
+pub fn cell_lookup_factory() -> covercraft_core::cells::CellLookupFactory {
+    std::sync::Arc::new(|token| {
+        let token = token.trim();
+        (!token.is_empty()).then(|| Box::new(opencellid::OpenCellId::new(token)) as Box<dyn covercraft_core::cells::CellLookup>)
+    })
+}
+
+/// The SQL source the configuration names, for maintenance (imports); never the demo.
+pub fn open_sql(db: &DbConfig, password: &str) -> Result<SqlSource> {
+    db.validate()?;
+    match db.kind.as_str() {
+        "mysql" => Ok(SqlSource::new(Box::new(mysql_exec::MySqlExecutor::connect(db, password)?))),
+        "sqlite" => Ok(SqlSource::new(Box::new(sqlite_exec::SqliteExecutor::open(&db.path)?))),
+        other => Err(Error::Invalid(format!("no SQL database to write to (kind {other:?}); configure one with `covercraft-cli db`"))),
     }
 }
 

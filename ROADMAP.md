@@ -26,6 +26,7 @@
 - Export of the report (PDF/print page).
 
 ## Progress log
+- 2026-10-15: live mobile cells from OpenCelliD's area service with a token preference (marked "live", cached per spot, failure as a note); `covercraft-cli cells` reports the age of `cell_db` and `cells import` refreshes it from an OpenCelliD export (gzipped or not, one country, optionally some networks), with a writer account.
 - 2026-10-14: "Mine" in the past verifications lists the session's user (it listed everyone's: the page sent no name).
 - 2026-10-14: the geocoder error names the server and the note explains what to check (Nominatim still importing, not running, name not resolving); coordinates by hand remain the fallback.
 
