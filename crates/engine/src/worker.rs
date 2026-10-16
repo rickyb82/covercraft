@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
-use covercraft_core::cells::{CellLookup, CellLookupFactory};
+use covercraft_core::cells::{CellLookup, CellLookupFactory, CellQuery};
 use covercraft_core::config::{DbConfig, Preferences};
 use covercraft_core::geo::Point;
 use covercraft_core::geocode::GeocoderFactory;
@@ -16,14 +16,35 @@ use serde_json::Value;
 /// What a job asks.
 #[derive(Clone, Debug)]
 pub enum JobKind {
-    Connect { db: DbConfig, password: String },
+    Connect {
+        db: DbConfig,
+        password: String,
+    },
     Ping,
     Comuni,
-    Streets { comune: String, query: String, limit: usize },
-    Civici { comune: String, street_egon: String, limit: usize },
-    Resolve { comune: String, via: String, civico: String, limit: usize },
+    Streets {
+        comune: String,
+        query: String,
+        limit: usize,
+    },
+    Civici {
+        comune: String,
+        street_egon: String,
+        limit: usize,
+    },
+    Resolve {
+        comune: String,
+        via: String,
+        civico: String,
+        limit: usize,
+    },
     Verify(Box<VerifyJob>),
     Bridges,
+    /// A cell by its identifiers: the table first, then OpenCelliD (with a token).
+    CellFind {
+        query: CellQuery,
+        token: String,
+    },
 }
 
 /// A verification: the address or the EGON code, and what goes with it.
@@ -55,6 +76,13 @@ pub enum Output {
     /// The report, with the request it answers (`user` inside) for the local history.
     Report(Box<Report>, Value),
     Bridges(Vec<Bridge>),
+    /// The cells found for a query (the table's, or the service's), and a note when the
+    /// service was not asked or failed.
+    Cells {
+        query: CellQuery,
+        cells: Vec<Cell>,
+        note: String,
+    },
 }
 
 pub struct Job {
@@ -217,6 +245,21 @@ impl Inner {
                 Ok(Output::Report(Box::new(r), request))
             }
             JobKind::Bridges => Ok(Output::Bridges(self.source()?.bridges()?)),
+            JobKind::CellFind { query, token } => {
+                let mut cells = self.source()?.cell(&query)?;
+                let mut note = String::new();
+                if cells.is_empty() {
+                    match self.cell_lookups.clone().and_then(|f| f(&token)) {
+                        Some(mut lookup) => match lookup.cell(&query) {
+                            Ok(Some(c)) => cells.push(c),
+                            Ok(None) => note = "not in cell_db nor at OpenCelliD".into(),
+                            Err(e) => note = format!("not in cell_db; OpenCelliD failed: {e}"),
+                        },
+                        None => note = "not in cell_db; no OpenCelliD token to ask the service".into(),
+                    }
+                }
+                Ok(Output::Cells { query, cells, note })
+            }
         }
     }
 }
@@ -239,6 +282,10 @@ impl CellLookup for CachedLookup {
         }
         self.cache.insert(key, cells.clone());
         Ok(cells)
+    }
+
+    fn cell(&mut self, q: &CellQuery) -> Result<Option<Cell>> {
+        self.inner.cell(q)
     }
 }
 

@@ -73,6 +73,25 @@ pub(super) fn translate(text: &str) -> Option<&'static str> {
         "In reach" => "Raggiungibile",
         "Out of reach" => "Fuori portata",
         "Reach" => "Portata",
+        "Find a mobile cell" => "Trova una cella mobile",
+        "MNC: TIM 1, Vodafone 10, WindTre 88, Iliad 50. Area is the LAC (GSM/UMTS) or TAC (LTE/NR); the cell id is the CID, for LTE the ECI (eNodeB × 256 + sector)." => {
+            "MNC: TIM 1, Vodafone 10, WindTre 88, Iliad 50. L'area è il LAC (GSM/UMTS) o il TAC (LTE/NR); l'id cella è il CID, per LTE l'ECI (eNodeB × 256 + settore)."
+        }
+        "MCC" => "MCC",
+        "MNC" => "MNC",
+        "Area (LAC/TAC)" => "Area (LAC/TAC)",
+        "Cell (CID/ECI)" => "Cella (CID/ECI)",
+        "eNodeB" => "eNodeB",
+        "Sector" => "Settore",
+        "Find" => "Trova",
+        "Cell" => "Cella",
+        "No cell found" => "Nessuna cella trovata",
+        "Estimated position" => "Posizione stimata",
+        "Range (m)" => "Raggio (m)",
+        "Samples" => "Campioni",
+        "The position is OpenCelliD's estimate (a centroid of user measurements): the error is of the order of the range." => {
+            "La posizione è la stima di OpenCelliD (un baricentro delle misure degli utenti): l'errore è dell'ordine del raggio."
+        }
         "Mobile cells" => "Celle mobili",
         "Operator" => "Operatore",
         "Radio" => "Radio",

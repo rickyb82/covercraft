@@ -6,7 +6,7 @@ use walkers::sources::{Attribution, TileSource};
 use walkers::{HttpTiles, Map, MapMemory, TileId, lat_lon};
 
 use crate::core::geo::Point;
-use crate::core::model::{Bridge, Report};
+use crate::core::model::{Bridge, Cell, Report};
 use crate::theme::Tokens;
 
 /// Any `{z}/{x}/{y}` tile server; OpenStreetMap when the template is empty.
@@ -162,6 +162,33 @@ pub fn bridges_map(state: &mut MapState, ui: &mut egui::Ui, t: &Tokens, bridges:
                 _ => t.muted,
             };
             marker(&p, at, color, &b.name, t);
+        }
+    });
+    attribution(ui, rect, t);
+}
+
+/// The cells found by their identifiers, each with its estimated range.
+pub fn cells_map(state: &mut MapState, ui: &mut egui::Ui, t: &Tokens, cells: &[Cell], key: &str, template: &str, height: f32) {
+    let points: Vec<(Point, &Cell)> = cells.iter().filter_map(|c| c.point().map(|p| (p, c))).collect();
+    let Some(first) = points.first().map(|(p, _)| *p) else { return };
+    state.centre(&format!("cell:{key}"), first, 13.0);
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), height), egui::Sense::hover());
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+    state.ensure_tiles(ui.ctx(), template);
+    let MapState { tiles, memory, .. } = state;
+    let tiles = tiles.as_mut().map(|tl| tl as &mut dyn walkers::Tiles);
+    Map::new(tiles, memory, lat_lon(first.lat, first.lon)).show(&mut child, |ui, _resp, projector, _mem| {
+        let p = ui.painter().with_clip_rect(rect);
+        for (pt, c) in &points {
+            let at = projector.project(lat_lon(pt.lat, pt.lon)).to_pos2();
+            let range_m = crate::core::geo::parse_number(&c.range).unwrap_or(0.0).clamp(0.0, 50_000.0);
+            if range_m > 0.0 {
+                let north = projector.project(lat_lon((pt.lat + range_m / 111_320.0).min(90.0), pt.lon)).to_pos2();
+                let r = at.distance(north).clamp(2.0, 4_000.0);
+                p.circle_filled(at, r, t.accent.gamma_multiply(0.15));
+                p.circle_stroke(at, r, Stroke::new(1.5, t.accent));
+            }
+            marker(&p, at, t.accent, &format!("{} {}", c.radio, c.cell), t);
         }
     });
     attribution(ui, rect, t);

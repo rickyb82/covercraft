@@ -394,6 +394,36 @@ impl CoverageSource for SqlSource {
             .collect())
     }
 
+    fn cell(&mut self, query: &covercraft_core::cells::CellQuery) -> Result<Vec<Cell>> {
+        // The columns are text as the export writes them: compare as numbers so `010` finds `10`.
+        let mut sql = "SELECT `radio`, `mcc`, `net`, `area`, `cell`, `lat`, `lon`, `range`, `samples` FROM `cell_db` WHERE (`mcc` + 0) = (? + 0) AND (`net` + 0) = (? + 0) AND (`area` + 0) = (? + 0) AND (`cell` + 0) = (? + 0)".to_string();
+        let mut p = vec![query.mcc.clone(), query.net.clone(), query.area.clone(), query.cell.clone()];
+        if !query.radio.is_empty() {
+            sql.push_str(" AND UPPER(`radio`) = ?");
+            p.push(query.radio.to_ascii_uppercase());
+        }
+        sql.push_str(" LIMIT 20");
+        let params: Vec<&str> = p.iter().map(String::as_str).collect();
+        Ok(self
+            .exec
+            .query(&sql, &params)?
+            .rows
+            .iter()
+            .map(|r| Cell {
+                radio: text(r, 0),
+                mcc: text(r, 1),
+                net: text(r, 2),
+                area: text(r, 3),
+                cell: text(r, 4),
+                lat: text(r, 5),
+                lon: text(r, 6),
+                range: text(r, 7),
+                samples: text(r, 8),
+                source: "db".into(),
+            })
+            .collect())
+    }
+
     fn log(&mut self, user: &str, request: &Value, answer: &Value) -> Result<()> {
         let req = request.to_string();
         let ans = answer.to_string();

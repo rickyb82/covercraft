@@ -179,6 +179,12 @@ fn radio_list(sess: &mut Session, _: &Value) -> Result<Value> {
     Ok(json!({"job": sess.submit("radio.list", JobKind::Bridges)?}))
 }
 
+fn cell_find(sess: &mut Session, v: &Value) -> Result<Value> {
+    let query = covercraft_core::cells::CellQuery::from_params(v)?;
+    let token = sess.config.preferences.opencellid_token.clone();
+    Ok(json!({"job": sess.submit("cell.find", JobKind::CellFind { query, token })?}))
+}
+
 fn history_list(sess: &mut Session, v: &Value) -> Result<Value> {
     // "Mine" is the session's user unless a `user` is named; `all` lists everyone's.
     let user = if v.get("all").and_then(Value::as_bool).unwrap_or(false) {
@@ -274,6 +280,13 @@ pub const COMMANDS: &[Command] = &[
     },
     Command { id: "report.get", label: "The last report", params: "", local: true, run: report_get },
     Command { id: "radio.list", label: "Radio bridges", params: "", local: false, run: radio_list },
+    Command {
+        id: "cell.find",
+        label: "Find a mobile cell by its identifiers",
+        params: "mcc (default 222), net (MNC), area (LAC/TAC), cell (CID/ECI) | enb + sector, radio (GSM|UMTS|LTE|NR)",
+        local: false,
+        run: cell_find,
+    },
     Command {
         id: "history.list",
         label: "Past verifications (local history)",

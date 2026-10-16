@@ -116,3 +116,13 @@ A framework that puts CoverCraft behind its own login can open the web app with
 `?settings=off` for non-administrators: the settings screen and its button are hidden. That
 is cosmetic; the framework's proxy must also refuse `db.configure`, `db.test` and
 `prefs.set` (apart from `theme` and `language`) for those users.
+
+### A cell by its identifiers
+
+`cell.find` (CLI `covercraft-cli cell NET AREA CELL`, MCP `find_cell`, the search box in the
+radio bridges screen) answers where a cell is from MCC (default 222), MNC, LAC/TAC and CID: the
+`cell_db` rows first, then, when the table has none and a token is set, OpenCelliD's
+`/cell/get`. For LTE the cell id is the ECI (eNodeB × 256 + sector); `--enb` and `--sector`
+compute it. The position is OpenCelliD's estimate, a centroid of the users' measurements: the
+error is of the order of the `range` given (hundreds of metres in town, kilometres in the
+country), never the antenna's exact spot.

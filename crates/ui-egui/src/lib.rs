@@ -58,6 +58,45 @@ pub struct Form {
     pub menu_hover: [bool; 3],
 }
 
+/// The identifiers of a mobile cell as typed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CellForm {
+    pub mcc: String,
+    pub net: String,
+    pub area: String,
+    pub cell: String,
+    pub enb: String,
+    pub sector: String,
+    pub radio: String,
+}
+
+impl Default for CellForm {
+    fn default() -> Self {
+        Self {
+            mcc: "222".into(),
+            net: String::new(),
+            area: String::new(),
+            cell: String::new(),
+            enb: String::new(),
+            sector: String::new(),
+            radio: String::new(),
+        }
+    }
+}
+
+impl CellForm {
+    pub fn params(&self) -> serde_json::Value {
+        let mut p = json!({"mcc": self.mcc.trim(), "net": self.net.trim(), "area": self.area.trim(), "radio": self.radio.trim()});
+        if !self.cell.trim().is_empty() {
+            p["cell"] = json!(self.cell.trim());
+        } else {
+            p["enb"] = json!(self.enb.trim());
+            p["sector"] = json!(self.sector.trim());
+        }
+        p
+    }
+}
+
 pub struct CoverApp {
     pub session: Box<dyn CoverSession>,
     pub language: Language,
@@ -78,6 +117,8 @@ pub struct CoverApp {
     pub allow_settings: bool,
     /// The map widget's state; tiles come from the network unless disabled.
     pub map: map::MapState,
+    /// The cell identifiers typed in the radio bridges screen.
+    pub cell_form: CellForm,
     /// Coordinates typed by hand for the open civico.
     pub manual_lat: String,
     pub manual_lon: String,
@@ -115,6 +156,7 @@ impl CoverApp {
             history_all: true,
             allow_settings: true,
             map: map::MapState::new(true),
+            cell_form: CellForm::default(),
             manual_lat: String::new(),
             manual_lon: String::new(),
             loaded: Loaded::default(),

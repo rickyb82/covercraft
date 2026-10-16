@@ -50,6 +50,10 @@ pub struct State {
     pub report: Option<Report>,
     pub history: Vec<HistoryEntry>,
     pub bridges: Vec<Bridge>,
+    /// The cells of the last `cell.find`, and the query and note that go with them.
+    pub cells: Vec<Cell>,
+    pub cell_query: Option<covercraft_core::cells::CellQuery>,
+    pub cell_note: String,
     /// `connected`, `error`, `unknown`.
     pub db_state: String,
     pub db_message: String,
@@ -479,6 +483,17 @@ impl Session {
                 self.state.bridges = list;
                 json!({"bridges": self.state.bridges.iter().map(bridge_json).collect::<Vec<_>>()})
             }
+            Output::Cells { query, cells, note } => {
+                self.state.cells = cells;
+                self.state.cell_note = note.clone();
+                let label = query.label();
+                let enb = query.enb_sector();
+                self.state.cell_query = Some(query);
+                json!({
+                    "query": label, "enb": enb.map(|(e, _)| e), "sector": enb.map(|(_, s)| s), "found": self.state.cells.len(),
+                    "cells": self.state.cells.iter().map(cell_json).collect::<Vec<_>>(), "note": note,
+                })
+            }
         }
     }
 }
@@ -524,6 +539,16 @@ pub fn civico_json(c: &Civico) -> Value {
 
 pub fn bridge_json(b: &Bridge) -> Value {
     json!({"id": b.id, "name": b.name, "lat": b.lat, "lon": b.lon, "alt": b.alt, "state": b.state, "description": b.description, "band": b.band})
+}
+
+/// A cell as JSON: the fields, the point, and a link to the map.
+pub fn cell_json(c: &Cell) -> Value {
+    let mut v = serde_json::to_value(c).unwrap_or(Value::Null);
+    if let Some(p) = c.point() {
+        v["point"] = json!({"lat": p.lat, "lon": p.lon});
+        v["map_url"] = json!(format!("https://www.openstreetmap.org/?mlat={:.5}&mlon={:.5}#map=15/{:.5}/{:.5}", p.lat, p.lon, p.lat, p.lon));
+    }
+    v
 }
 
 pub fn history_json(h: &HistoryEntry) -> Value {
@@ -613,6 +638,16 @@ mod tests {
         assert_eq!(s.state().report.as_ref().map(|r| r.civico.egon.as_str()), Some("100010"));
         let v = run(&mut s, "radio.list", json!({})).unwrap();
         assert_eq!(v["bridges"].as_array().unwrap().len(), 5);
+        // A cell by its identifiers: in the table, with leading zeros tolerated.
+        let v = run(&mut s, "cell.find", json!({"net": "010", "area": 1, "cell": "10392140"})).unwrap();
+        assert_eq!((v["found"].as_u64(), v["cells"][0]["source"].as_str(), v["cells"][0]["lat"].as_str()), (Some(1), Some("db"), Some("39.2140")));
+        assert!(v["cells"][0]["map_url"].as_str().unwrap().contains("mlat=39.21400"));
+        assert_eq!(s.state().cells.len(), 1);
+        let v = run(&mut s, "cell.find", json!({"net": 10, "area": 1, "enb": 40594, "sector": 60})).unwrap();
+        assert_eq!((v["query"].as_str(), v["enb"].as_u64()), (Some("222-10-1-10392124"), Some(40594)));
+        assert_eq!(v["found"], 0);
+        assert!(v["note"].as_str().unwrap().contains("no OpenCelliD token"), "{v}");
+        assert!(run(&mut s, "cell.find", json!({"net": "x"})).is_err());
         assert!(run(&mut s, "coverage.verify", json!({"comune": "atlantide", "via": "x", "civico": "1"})).is_err());
         assert!(run(&mut s, "coverage.verify", json!({"comune": "cagliari", "via": "via nessuna", "civico": "1"})).is_err());
         assert!(run(&mut s, "coverage.verify", json!({"comune": "sas", "via": "x", "civico": "1"})).is_err());

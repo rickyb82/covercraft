@@ -40,6 +40,8 @@ fn tools() -> Value {
          "inputSchema": {"type": "object", "properties": {"comune": comune, "query": {"type": "string"}, "limit": limit}, "required": ["comune", "query"]}},
         {"name": "list_civici", "description": "The civici of a street (by EGON street code from search_street), each with its EGON civico code.",
          "inputSchema": {"type": "object", "properties": {"comune": comune, "street_egon": {"type": "string"}, "limit": limit}, "required": ["comune", "street_egon"]}},
+        {"name": "find_cell", "description": "Where a mobile cell is, from its identifiers: MCC (default 222, Italy), MNC (TIM 1, Vodafone 10, WindTre 88, Iliad 50), area (LAC for GSM/UMTS, TAC for LTE/NR) and cell id (CID; for LTE the ECI = eNodeB × 256 + sector, or give enb + sector). Answers the estimated position (OpenCelliD: a centroid of user measurements, error of the order of the range), the range and the samples, from the cell_db table or, with a token, from OpenCelliD's service.",
+         "inputSchema": {"type": "object", "properties": {"mcc": {"type": ["integer", "string"]}, "net": {"type": ["integer", "string"], "description": "MNC"}, "area": {"type": ["integer", "string"], "description": "LAC or TAC"}, "cell": {"type": ["integer", "string"], "description": "CID / ECI"}, "enb": {"type": ["integer", "string"], "description": "eNodeB id (LTE), with sector"}, "sector": {"type": ["integer", "string"]}, "radio": {"type": "string", "enum": ["GSM", "UMTS", "LTE", "NR"]}}, "required": ["net", "area"]}},
         {"name": "radio_bridges", "description": "The operator's radio bridges: name, coordinates, altitude, state, band.",
          "inputSchema": {"type": "object", "properties": {}}},
         {"name": "history", "description": "Past verifications from the local history, newest first (summary, user, date).",
@@ -150,6 +152,10 @@ impl Server {
             "search_street" => self.run("street.search", pass_through(args, &["comune", "query", "limit"])),
             "list_civici" => self.run("civico.list", pass_through(args, &["comune", "street_egon", "limit"])),
             "radio_bridges" => self.run("radio.list", json!({})),
+            "find_cell" => self.run(
+                "cell.find",
+                pass_through(args, &["mcc", "net", "mnc", "area", "lac", "tac", "cell", "cellid", "cid", "eci", "enb", "sector", "radio"]),
+            ),
             "history" => self.run("history.list", pass_through(args, &["user", "all", "limit"])),
             "open_history" => {
                 let v = self.run("history.open", pass_through(args, &["id"]))?;
@@ -297,7 +303,7 @@ mod tests {
         assert_eq!(init["result"]["protocolVersion"], "2024-11-05");
         assert!(s.handle(&json!({"jsonrpc": "2.0", "method": "notifications/initialized"})).is_none());
         let tools = s.handle(&json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})).unwrap();
-        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 12);
+        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 13);
         let r = call(&mut s, "search_comune", json!({"query": "cagl"}));
         assert_eq!(r["structuredContent"]["comuni"][0]["name"], "CAGLIARI");
         let r = call(&mut s, "search_street", json!({"comune": "cagliari", "query": "roma"}));

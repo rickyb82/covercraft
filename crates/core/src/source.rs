@@ -32,6 +32,8 @@ pub trait CoverageSource: Send {
     fn bridges(&mut self) -> Result<Vec<Bridge>>;
     /// Cells within `half_deg` degrees of the point (a bounding box; the caller measures).
     fn cells(&mut self, lat: f64, lon: f64, half_deg: f64, limit: usize) -> Result<Vec<Cell>>;
+    /// The rows of `cell_db` with these identifiers (one per radio, usually).
+    fn cell(&mut self, query: &crate::cells::CellQuery) -> Result<Vec<Cell>>;
     /// Records a verification (`requests_log`).
     fn log(&mut self, user: &str, request: &Value, answer: &Value) -> Result<()>;
     /// Past verifications, newest first (`user` empty = everyone's).

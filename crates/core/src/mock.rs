@@ -476,6 +476,17 @@ impl CoverageSource for MockSource {
             .collect())
     }
 
+    fn cell(&mut self, query: &crate::cells::CellQuery) -> Result<Vec<Cell>> {
+        self.check()?;
+        Ok(self
+            .cells
+            .iter()
+            .filter(|c| query.matches(c))
+            .take(limits::QUERY_ROWS)
+            .map(|c| Cell { source: if c.source.is_empty() { "db".into() } else { c.source.clone() }, ..c.clone() })
+            .collect())
+    }
+
     fn log(&mut self, user: &str, request: &Value, answer: &Value) -> Result<()> {
         self.check()?;
         let id = i64::try_from(self.log.len()).unwrap_or(0) + 1;

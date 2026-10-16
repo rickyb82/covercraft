@@ -11,6 +11,127 @@ use crate::model::Cell;
 /// Something that lists the cells around a point (OpenCelliD, or a test double).
 pub trait CellLookup: Send {
     fn cells_near(&mut self, point: Point, limit: usize) -> crate::Result<Vec<Cell>>;
+    /// One cell by its identifiers (`/cell/get`); `None` when the service does not know it.
+    fn cell(&mut self, _query: &CellQuery) -> crate::Result<Option<Cell>> {
+        Ok(None)
+    }
+}
+
+/// A cell named by its identifiers: country (MCC), network (MNC), area (LAC or TAC) and
+/// cell id (CID; for LTE the ECI, eNodeB × 256 + sector).
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CellQuery {
+    pub mcc: String,
+    pub net: String,
+    pub area: String,
+    pub cell: String,
+    /// `GSM`, `UMTS`, `LTE`, `NR`, or empty for any.
+    pub radio: String,
+}
+
+fn digits(v: &Value, keys: &[&str]) -> String {
+    keys.iter()
+        .find_map(|k| v.get(k))
+        .map(|x| match x {
+            Value::String(s) => s.trim().to_string(),
+            Value::Null => String::new(),
+            other => other.to_string(),
+        })
+        .unwrap_or_default()
+}
+
+impl CellQuery {
+    /// From command parameters: `mcc` (default 222), `net`/`mnc`, `area`/`lac`/`tac`, `cell`/`cid`
+    /// or `enb` + `sector` (LTE: ECI = eNodeB × 256 + sector), `radio`.
+    pub fn from_params(v: &Value) -> crate::Result<Self> {
+        let number = |s: &str, what: &str| -> crate::Result<u64> {
+            let t = s.trim().trim_start_matches('0');
+            let t = if t.is_empty() && !s.trim().is_empty() { "0" } else { t };
+            if t.is_empty() {
+                return Err(crate::Error::Invalid(format!("{what} is required")));
+            }
+            t.parse::<u64>().map_err(|_| crate::Error::Invalid(format!("{what} must be a number, got {s:?}")))
+        };
+        let mcc = digits(v, &["mcc"]);
+        let mcc = if mcc.is_empty() { 222 } else { number(&mcc, "mcc")? };
+        let net = number(&digits(v, &["net", "mnc"]), "net (MNC)")?;
+        let area = number(&digits(v, &["area", "lac", "tac"]), "area (LAC/TAC)")?;
+        let cell_text = digits(v, &["cell", "cellid", "cid", "eci"]);
+        let cell = if cell_text.is_empty() {
+            let enb = number(&digits(v, &["enb", "enodeb"]), "cell (CID/ECI) or enb + sector")?;
+            let sector = number(&digits(v, &["sector"]), "sector")?;
+            if sector > 255 {
+                return Err(crate::Error::Invalid("sector: 0-255".into()));
+            }
+            enb.checked_mul(256).and_then(|x| x.checked_add(sector)).ok_or_else(|| crate::Error::Invalid("enb too large".into()))?
+        } else {
+            number(&cell_text, "cell")?
+        };
+        let radio = digits(v, &["radio"]).to_ascii_uppercase();
+        if !radio.is_empty() && !["GSM", "UMTS", "LTE", "NR", "CDMA"].contains(&radio.as_str()) {
+            return Err(crate::Error::Invalid("radio: GSM, UMTS, LTE or NR".into()));
+        }
+        Ok(Self { mcc: mcc.to_string(), net: net.to_string(), area: area.to_string(), cell: cell.to_string(), radio })
+    }
+
+    /// `222-10-100-12345`.
+    pub fn label(&self) -> String {
+        format!("{}-{}-{}-{}", self.mcc, self.net, self.area, self.cell)
+    }
+
+    /// Whether a cell (from the table or the service) is the one asked.
+    pub fn matches(&self, c: &Cell) -> bool {
+        let same = |a: &str, b: &str| a.trim().trim_start_matches('0') == b.trim().trim_start_matches('0');
+        same(&c.mcc, &self.mcc)
+            && same(&c.net, &self.net)
+            && same(&c.area, &self.area)
+            && same(&c.cell, &self.cell)
+            && (self.radio.is_empty() || c.radio.eq_ignore_ascii_case(&self.radio))
+    }
+
+    /// For LTE: the eNodeB and the sector of the ECI.
+    pub fn enb_sector(&self) -> Option<(u64, u64)> {
+        let eci: u64 = self.cell.parse().ok()?;
+        Some((eci / 256, eci % 256))
+    }
+}
+
+/// The single-cell service's base URL.
+pub const GET_URL: &str = "https://opencellid.org/cell/get";
+
+/// The query string of `/cell/get`.
+pub fn cell_query(token: &str, q: &CellQuery) -> String {
+    let mut s = format!(
+        "key={}&mcc={}&mnc={}&lac={}&cellid={}&format=json",
+        crate::geocode::url_encode(token.trim()),
+        crate::geocode::url_encode(&q.mcc),
+        crate::geocode::url_encode(&q.net),
+        crate::geocode::url_encode(&q.area),
+        crate::geocode::url_encode(&q.cell)
+    );
+    if !q.radio.is_empty() {
+        s.push_str(&format!("&radio={}", crate::geocode::url_encode(&q.radio)));
+    }
+    s
+}
+
+/// The cell in a `/cell/get` answer; `None` when the service says it does not know it.
+pub fn parse_cell_answer(text: &str) -> crate::Result<Option<Cell>> {
+    let v: Value = serde_json::from_str(text.get(..text.len().min(100_000)).unwrap_or_default())
+        .map_err(|e| crate::Error::Invalid(format!("opencellid: not JSON: {e}")))?;
+    if let Some(err) = v.get("error").and_then(Value::as_str) {
+        let code = v.get("code").and_then(Value::as_i64).unwrap_or(0);
+        if code == 1 || err.to_ascii_lowercase().contains("not found") {
+            return Ok(None);
+        }
+        return Err(crate::Error::Invalid(format!("opencellid: {err} (code {code})")));
+    }
+    let cells = parse_area_answer(&json_array_of(&v))?;
+    Ok(cells.into_iter().next())
+}
+
+fn json_array_of(v: &Value) -> String {
+    Value::Array(vec![v.clone()]).to_string()
 }
 
 /// Makes a lookup for an API token (`None` when the token is empty); apps inject the real one.
@@ -118,6 +239,33 @@ mod tests {
         assert!(parse_area_answer("<html>").is_err());
         assert!(parse_area_answer("[]").unwrap().is_empty());
         assert!(parse_area_answer(r#"{"cells":"no"}"#).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_cell_query_reads_identifiers_and_the_single_cell_answer() {
+        let q = CellQuery::from_params(&serde_json::json!({"net": "10", "area": 100, "cell": "12345"})).unwrap();
+        assert_eq!((q.mcc.as_str(), q.net.as_str(), q.area.as_str(), q.cell.as_str(), q.radio.as_str()), ("222", "10", "100", "12345", ""));
+        let q = CellQuery::from_params(&serde_json::json!({"mcc": "222", "mnc": "01", "tac": "7", "enb": 100, "sector": 3, "radio": "lte"})).unwrap();
+        assert_eq!((q.cell.as_str(), q.radio.as_str(), q.enb_sector()), ("25603", "LTE", Some((100, 3))));
+        assert_eq!(q.label(), "222-1-7-25603");
+        assert!(CellQuery::from_params(&serde_json::json!({"net": "x"})).is_err());
+        assert!(CellQuery::from_params(&serde_json::json!({"net": 1, "area": 1})).is_err(), "no cell");
+        assert!(CellQuery::from_params(&serde_json::json!({"net": 1, "area": 1, "enb": 1, "sector": 300})).is_err());
+        assert!(CellQuery::from_params(&serde_json::json!({"net": 1, "area": 1, "cell": 1, "radio": "WIFI"})).is_err());
+        let c = Cell { mcc: "222".into(), net: "010".into(), area: "100".into(), cell: "12345".into(), radio: "LTE".into(), ..Default::default() };
+        let q = CellQuery { mcc: "222".into(), net: "10".into(), area: "100".into(), cell: "12345".into(), radio: String::new() };
+        assert!(q.matches(&c));
+        assert!(!CellQuery { radio: "GSM".into(), ..q.clone() }.matches(&c));
+        let url = cell_query("k", &q);
+        assert_eq!(url, "key=k&mcc=222&mnc=10&lac=100&cellid=12345&format=json");
+        let found =
+            parse_cell_answer(r#"{"lat":39.22,"lon":9.12,"mcc":222,"mnc":10,"lac":100,"cellid":12345,"range":1200,"samples":25,"radio":"LTE"}"#)
+                .unwrap()
+                .unwrap();
+        assert_eq!((found.lat.as_str(), found.source.as_str()), ("39.22", "opencellid"));
+        assert!(parse_cell_answer(r#"{"error":"cell not found","code":1}"#).unwrap().is_none());
+        assert!(parse_cell_answer(r#"{"error":"Invalid API key","code":2}"#).is_err());
+        assert!(parse_cell_answer("<html>").is_err());
     }
 
     #[test]

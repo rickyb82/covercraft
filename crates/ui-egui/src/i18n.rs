@@ -233,6 +233,21 @@ pub const LABELS: &[&str] = &[
     "Customer antenna height (m)",
     "geocoded",
     "by hand",
+    "Find a mobile cell",
+    "MNC: TIM 1, Vodafone 10, WindTre 88, Iliad 50. Area is the LAC (GSM/UMTS) or TAC (LTE/NR); the cell id is the CID, for LTE the ECI (eNodeB × 256 + sector).",
+    "MCC",
+    "MNC",
+    "Area (LAC/TAC)",
+    "Cell (CID/ECI)",
+    "eNodeB",
+    "Sector",
+    "Find",
+    "Cell",
+    "No cell found",
+    "Estimated position",
+    "Range (m)",
+    "Samples",
+    "The position is OpenCelliD's estimate (a centroid of user measurements): the error is of the order of the range.",
 ];
 
 #[cfg(test)]

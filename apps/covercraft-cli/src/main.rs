@@ -16,6 +16,8 @@ const USAGE: &str = "Usage:
   covercraft-cli streets COMUNE QUERY
   covercraft-cli civici COMUNE STREET_EGON
   covercraft-cli bridges
+  covercraft-cli cell NET AREA CELL [--mcc 222] [--radio LTE]   # where a mobile cell is (MNC, LAC/TAC, CID/ECI)
+  covercraft-cli cell NET AREA --enb ENB --sector S [--mcc 222]
   covercraft-cli history [--user NAME] [--all] [--limit N]
   covercraft-cli cells                                   # how many mobile cells cell_db holds and how old
   covercraft-cli cells import FILE.csv[.gz] [--mcc 222] [--net 1,10,88,50] [--db-user U --db-password PW]
@@ -241,6 +243,37 @@ fn run(args: &[String]) -> Result<(), String> {
                         b["alt"].as_str().unwrap_or_default(),
                         b["band"].as_str().unwrap_or_default(),
                         b["state"].as_str().unwrap_or_default()
+                    );
+                }
+            }
+            Ok(())
+        }
+        Some("cell") => {
+            let mut s = session(args);
+            let mut p = json!({"net": pos.get(1).cloned().unwrap_or_default(), "area": pos.get(2).cloned().unwrap_or_default()});
+            if let Some(c) = pos.get(3) {
+                p["cell"] = json!(c);
+            }
+            for (k, f) in [("mcc", "--mcc"), ("enb", "--enb"), ("sector", "--sector"), ("radio", "--radio")] {
+                if let Some(v) = flag(args, f) {
+                    p[k] = json!(v);
+                }
+            }
+            let v = s.run_blocking("cell.find", p).map_err(|e| e.to_string())?;
+            if json_out {
+                print_json(&v);
+            } else {
+                println!("{}  {}", v["query"].as_str().unwrap_or_default(), v["note"].as_str().unwrap_or_default());
+                for c in v["cells"].as_array().into_iter().flatten() {
+                    println!(
+                        "  {:<5} lat {:<10} lon {:<10} range {:>6} m  samples {:>5}  {}  {}",
+                        c["radio"].as_str().unwrap_or_default(),
+                        c["lat"].as_str().unwrap_or_default(),
+                        c["lon"].as_str().unwrap_or_default(),
+                        c["range"].as_str().unwrap_or_default(),
+                        c["samples"].as_str().unwrap_or_default(),
+                        c["source"].as_str().unwrap_or_default(),
+                        c["map_url"].as_str().unwrap_or_default()
                     );
                 }
             }

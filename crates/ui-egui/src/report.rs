@@ -570,6 +570,83 @@ pub fn history(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
 }
 
 /// The bridges on a plain lat/lon plot, with the list.
+/// Where a mobile cell is, from its identifiers.
+fn cell_finder(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
+    let title = app.tr("Find a mobile cell").to_string();
+    card(ui, t, &title, |ui| {
+        ui.label(RichText::new(app.tr("MNC: TIM 1, Vodafone 10, WindTre 88, Iliad 50. Area is the LAC (GSM/UMTS) or TAC (LTE/NR); the cell id is the CID, for LTE the ECI (eNodeB × 256 + sector).")).small().color(t.muted));
+        let lang = app.language;
+        let mut find = false;
+        egui::Grid::new("cell-form").num_columns(8).spacing(vec2(8.0, 6.0)).show(ui, |ui| {
+            let f = &mut app.cell_form;
+            let field = |ui: &mut egui::Ui, label: &str, value: &mut String, w: f32| {
+                ui.label(RichText::new(lang.tr(label)).small().color(t.muted));
+                ui.add_sized([w, 22.0], egui::TextEdit::singleline(value));
+            };
+            field(ui, "MCC", &mut f.mcc, 50.0);
+            field(ui, "MNC", &mut f.net, 50.0);
+            field(ui, "Area (LAC/TAC)", &mut f.area, 80.0);
+            field(ui, "Cell (CID/ECI)", &mut f.cell, 110.0);
+            ui.end_row();
+            field(ui, "Radio", &mut f.radio, 50.0);
+            field(ui, "eNodeB", &mut f.enb, 80.0);
+            field(ui, "Sector", &mut f.sector, 50.0);
+            ui.label("");
+            if icon_text_button(ui, t, Icon::Search, lang.tr("Find"), true).clicked() {
+                find = true;
+            }
+            ui.end_row();
+        });
+        if find {
+            let p = app.cell_form.params();
+            app.run("cell.find", p);
+        }
+        let st = app.session.state();
+        let (cells, note, query) = (st.cells.clone(), st.cell_note.clone(), st.cell_query.clone());
+        let Some(q) = query else { return };
+        ui.add_space(6.0);
+        ui.label(RichText::new(format!("{}: {}", app.tr("Cell"), q.label())).strong().color(t.ui_text));
+        if !note.is_empty() {
+            ui.label(RichText::new(app.language.tr_message(&note)).small().color(crate::report::status_color(crate::core::status::Status::Planned)));
+        }
+        if cells.is_empty() {
+            ui.label(RichText::new(app.tr("No cell found")).color(t.muted));
+            return;
+        }
+        egui::Grid::new("cell-found").striped(true).spacing(vec2(14.0, 4.0)).show(ui, |ui| {
+            for h in ["Radio", "Estimated position", "Range (m)", "Samples", "Source", ""] {
+                ui.label(RichText::new(app.tr(h)).small().color(t.muted));
+            }
+            ui.end_row();
+            for c in &cells {
+                ui.label(RichText::new(&c.radio).small());
+                ui.label(RichText::new(format!("{}, {}", c.lat, c.lon)).small().color(t.ui_text));
+                ui.label(RichText::new(&c.range).small());
+                ui.label(RichText::new(&c.samples).small());
+                ui.label(RichText::new(if c.source == "db" { "cell_db" } else { "OpenCelliD" }).small().color(t.muted));
+                if let Some(p) = c.point() {
+                    ui.hyperlink_to(
+                        RichText::new("OpenStreetMap").small(),
+                        format!("https://www.openstreetmap.org/?mlat={:.5}&mlon={:.5}#map=15/{:.5}/{:.5}", p.lat, p.lon, p.lat, p.lon),
+                    );
+                } else {
+                    ui.label("");
+                }
+                ui.end_row();
+            }
+        });
+        ui.label(
+            RichText::new(app.tr("The position is OpenCelliD's estimate (a centroid of user measurements): the error is of the order of the range."))
+                .small()
+                .color(t.muted),
+        );
+        if cells.iter().any(|c| c.point().is_some()) {
+            let template = app.session.config().preferences.tiles_url.clone();
+            crate::map::cells_map(&mut app.map, ui, t, &cells, &q.label(), &template, 300.0);
+        }
+    });
+}
+
 pub fn bridges(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         egui::Frame::NONE.inner_margin(egui::Margin::same(18)).show(ui, |ui| {
@@ -580,6 +657,8 @@ pub fn bridges(app: &mut CoverApp, ui: &mut egui::Ui, t: &Tokens) {
                 }
             });
             ui.add_space(8.0);
+            cell_finder(app, ui, t);
+            ui.add_space(10.0);
             let list = app.session.state().bridges.clone();
             if list.is_empty() {
                 ui.label(RichText::new(app.tr("No radio bridge in the database")).color(t.muted));
