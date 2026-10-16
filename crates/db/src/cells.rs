@@ -14,6 +14,8 @@ use crate::SqlSource;
 /// The columns written, in the order of OpenCelliD's header.
 const COLUMNS: [&str; 14] =
     ["radio", "mcc", "net", "area", "cell", "unit", "lon", "lat", "range", "samples", "changeable", "created", "updated", "averageSignal"];
+/// The radio types of the first column (a header-less file starts with one).
+const RADIOS: [&str; 5] = ["GSM", "UMTS", "LTE", "NR", "CDMA"];
 /// Rows per `INSERT` (14 parameters each: well under SQLite's and MySQL's limits).
 const BATCH: usize = 200;
 /// Longest line read before the rest is dropped (a hostile file).
@@ -54,7 +56,16 @@ pub fn import(src: &mut SqlSource, reader: impl BufRead, mcc: &str, nets: &[Stri
         Some(Err(e)) => return Err(Error::Invalid(format!("reading the export: {e}"))),
         None => return Err(Error::Invalid("empty export".into())),
     };
-    let names: Vec<String> = header.trim().split(',').map(|c| c.trim().trim_matches('"').to_string()).collect();
+    let mut names: Vec<String> = header.trim().split(',').map(|c| c.trim().trim_matches('"').to_string()).collect();
+    // The country files of OpenCelliD come without a header line: the first line is a cell,
+    // in the standard column order.
+    let mut first_data_line: Option<String> = None;
+    if names.first().is_some_and(|f| RADIOS.contains(&f.to_ascii_uppercase().as_str()))
+        && names.get(1).is_some_and(|m| m.chars().all(|c| c.is_ascii_digit()))
+    {
+        first_data_line = Some(header.clone());
+        names = COLUMNS.iter().map(|c| (*c).to_string()).collect();
+    }
     let index: Vec<usize> = COLUMNS
         .iter()
         .map(|c| {
@@ -75,7 +86,8 @@ pub fn import(src: &mut SqlSource, reader: impl BufRead, mcc: &str, nets: &[Stri
         }
     }
     let mut batch: Vec<Vec<String>> = Vec::with_capacity(BATCH);
-    for line in lines {
+    let first = first_data_line.into_iter().map(|l| Ok(l.into_bytes()));
+    for line in first.chain(lines) {
         let line = line.map_err(|e| Error::Invalid(format!("reading the export: {e}")))?;
         let line = String::from_utf8_lossy(line.get(..line.len().min(LINE)).unwrap_or_default());
         let line = line.trim();
@@ -113,10 +125,36 @@ fn flush(src: &mut SqlSource, rows: &[Vec<String>]) -> Result<usize> {
 }
 
 /// How many rows the table has and the span of their `updated` stamps.
+/// How many cells the table holds and the span of their `updated` stamps as dates. The column
+/// is text: only epoch stamps (OpenCelliD's, ten digits, so their text order is their numeric
+/// order) count; rows from older imports with other formats are ignored for the span.
 pub fn summary(src: &mut SqlSource) -> Result<(u64, String, String)> {
-    let t = src.query("SELECT COUNT(*), MIN(`updated`), MAX(`updated`) FROM `cell_db`", &[])?;
+    let t = src.query("SELECT COUNT(*) FROM `cell_db`", &[])?;
+    let count: u64 = t.rows.first().and_then(|r| r.first()).cloned().flatten().unwrap_or_default().parse().unwrap_or(0);
+    let t = src.query(
+        "SELECT MIN(`updated`), MAX(`updated`) FROM `cell_db` WHERE `updated` NOT LIKE '%-%' AND `updated` NOT LIKE '%/%' AND `updated` NOT LIKE '%:%' AND LENGTH(`updated`) = 10",
+        &[],
+    )?;
     let cell = |i: usize| t.rows.first().and_then(|r| r.get(i)).cloned().flatten().unwrap_or_default();
-    Ok((cell(0).parse().unwrap_or(0), cell(1), cell(2)))
+    Ok((count, epoch_date(&cell(0)), epoch_date(&cell(1))))
+}
+
+/// `1757508541` → `2025-09-10`; anything else stays as it is.
+pub fn epoch_date(s: &str) -> String {
+    let Ok(secs) = s.trim().parse::<i64>() else { return s.trim().to_string() };
+    let days = secs.div_euclid(86_400);
+    // Civil date from days since 1970-01-01 (Howard Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}")
 }
 
 #[cfg(test)]
@@ -141,10 +179,27 @@ mod tests {
         assert!(r.deleted > 0, "the demo city's Italian cells were replaced");
         let (count, _, max) = summary(&mut src).unwrap();
         assert_eq!(count, 3, "two Italian rows plus the German one kept");
-        assert_eq!(max, "1760000001");
+        assert_eq!(max, "2025-10-09");
+        assert_eq!(epoch_date("1757508541"), "2025-09-10");
+        assert_eq!(epoch_date("0"), "1970-01-01");
+        assert_eq!(epoch_date("2006-07-09"), "2006-07-09");
         let cells = src.cells(39.22, 9.12, 0.05, 50).unwrap();
         assert_eq!(cells.len(), 2);
         assert!(cells.iter().any(|c| c.cell == "12345" && c.range == "1200"));
+        // A country file without a header: the first line is already a cell.
+        let csv = "GSM,222,1,44822,32263,0,10.6196,43.6515,2210,30,1,1311092271,1757508541,0\nLTE,222,10,100,12633651,0,9.1,39.2,900,12,1,1,1760000000,-80\n";
+        let r = import(&mut src, Cursor::new(csv.as_bytes()), "222", &[]).unwrap();
+        assert_eq!((r.read, r.written, r.skipped), (2, 2, 0));
+        let found = src
+            .cell(&covercraft_core::cells::CellQuery {
+                mcc: "222".into(),
+                net: "10".into(),
+                area: String::new(),
+                cell: "12633651".into(),
+                radio: String::new(),
+            })
+            .unwrap();
+        assert_eq!(found.first().map(|c| c.area.as_str()), Some("100"));
     }
 
     #[test]
