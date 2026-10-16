@@ -89,10 +89,12 @@ impl CellQuery {
             && (self.radio.is_empty() || c.radio.eq_ignore_ascii_case(&self.radio))
     }
 
-    /// For LTE: the eNodeB and the sector of the ECI.
+    /// For LTE: the eNodeB and the sector of the ECI. Only when the cell is LTE/NR, or its id
+    /// does not fit a 2G/3G CI (16 bits): a plain CI is not split, or it reads as LTE.
     pub fn enb_sector(&self) -> Option<(u64, u64)> {
         let eci: u64 = self.cell.parse().ok()?;
-        Some((eci / 256, eci % 256))
+        let lte = matches!(self.radio.as_str(), "LTE" | "NR") || eci > 65_535;
+        lte.then_some((eci / 256, eci % 256))
     }
 }
 
@@ -255,6 +257,8 @@ mod tests {
         let c = Cell { mcc: "222".into(), net: "010".into(), area: "100".into(), cell: "12345".into(), radio: "LTE".into(), ..Default::default() };
         let q = CellQuery { mcc: "222".into(), net: "10".into(), area: "100".into(), cell: "12345".into(), radio: String::new() };
         assert!(q.matches(&c));
+        assert_eq!(q.enb_sector(), None, "a 16-bit id without a radio is a 2G/3G CI");
+        assert_eq!(CellQuery { radio: "LTE".into(), ..q.clone() }.enb_sector(), Some((48, 57)));
         assert!(!CellQuery { radio: "GSM".into(), ..q.clone() }.matches(&c));
         let url = cell_query("k", &q);
         assert_eq!(url, "key=k&mcc=222&mnc=10&lac=100&cellid=12345&format=json");
