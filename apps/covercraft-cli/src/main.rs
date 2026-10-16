@@ -44,6 +44,10 @@ fn has(args: &[String], name: &str) -> bool {
 fn positional(args: &[String]) -> Vec<String> {
     let valued = [
         "--home",
+        "--mcc",
+        "--enb",
+        "--sector",
+        "--radio",
         "--lang",
         "--user",
         "--limit",
