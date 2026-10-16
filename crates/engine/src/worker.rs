@@ -248,7 +248,9 @@ impl Inner {
             JobKind::CellFind { query, token } => {
                 let mut cells = self.source()?.cell(&query)?;
                 let mut note = String::new();
-                if cells.is_empty() {
+                if cells.is_empty() && !query.has_area() {
+                    note = "not in cell_db; OpenCelliD needs the area (LAC/TAC) too: give it, or import the country's export into cell_db".into();
+                } else if cells.is_empty() {
                     match self.cell_lookups.clone().and_then(|f| f(&token)) {
                         Some(mut lookup) => match lookup.cell(&query) {
                             Ok(Some(c)) => cells.push(c),

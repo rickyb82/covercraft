@@ -648,6 +648,11 @@ mod tests {
         assert_eq!(v["found"], 0);
         assert!(v["note"].as_str().unwrap().contains("no OpenCelliD token"), "{v}");
         assert!(run(&mut s, "cell.find", json!({"net": "x"})).is_err());
+        // Without the area the table is searched by network and cell id alone.
+        let v = run(&mut s, "cell.find", json!({"net": 10, "cell": "10392140"})).unwrap();
+        assert_eq!((v["found"].as_u64(), v["cells"][0]["area"].as_str()), (Some(1), Some("1")));
+        let v = run(&mut s, "cell.find", json!({"net": 10, "cell": "99"})).unwrap();
+        assert!(v["note"].as_str().unwrap().contains("needs the area"), "{v}");
         assert!(run(&mut s, "coverage.verify", json!({"comune": "atlantide", "via": "x", "civico": "1"})).is_err());
         assert!(run(&mut s, "coverage.verify", json!({"comune": "cagliari", "via": "via nessuna", "civico": "1"})).is_err());
         assert!(run(&mut s, "coverage.verify", json!({"comune": "sas", "via": "x", "civico": "1"})).is_err());

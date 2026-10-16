@@ -41,8 +41,9 @@ fn digits(v: &Value, keys: &[&str]) -> String {
 }
 
 impl CellQuery {
-    /// From command parameters: `mcc` (default 222), `net`/`mnc`, `area`/`lac`/`tac`, `cell`/`cid`
-    /// or `enb` + `sector` (LTE: ECI = eNodeB × 256 + sector), `radio`.
+    /// From command parameters: `mcc` (default 222), `net`/`mnc`, `area`/`lac`/`tac` (optional: the
+    /// table is searched without it, the service needs it), `cell`/`cid` or `enb` + `sector`
+    /// (LTE: ECI = eNodeB × 256 + sector), `radio`.
     pub fn from_params(v: &Value) -> crate::Result<Self> {
         let number = |s: &str, what: &str| -> crate::Result<u64> {
             let t = s.trim().trim_start_matches('0');
@@ -55,7 +56,8 @@ impl CellQuery {
         let mcc = digits(v, &["mcc"]);
         let mcc = if mcc.is_empty() { 222 } else { number(&mcc, "mcc")? };
         let net = number(&digits(v, &["net", "mnc"]), "net (MNC)")?;
-        let area = number(&digits(v, &["area", "lac", "tac"]), "area (LAC/TAC)")?;
+        let area_text = digits(v, &["area", "lac", "tac"]);
+        let area = if area_text.is_empty() || area_text.trim() == "0" { None } else { Some(number(&area_text, "area (LAC/TAC)")?) };
         let cell_text = digits(v, &["cell", "cellid", "cid", "eci"]);
         let cell = if cell_text.is_empty() {
             let enb = number(&digits(v, &["enb", "enodeb"]), "cell (CID/ECI) or enb + sector")?;
@@ -71,12 +73,17 @@ impl CellQuery {
         if !radio.is_empty() && !["GSM", "UMTS", "LTE", "NR", "CDMA"].contains(&radio.as_str()) {
             return Err(crate::Error::Invalid("radio: GSM, UMTS, LTE or NR".into()));
         }
-        Ok(Self { mcc: mcc.to_string(), net: net.to_string(), area: area.to_string(), cell: cell.to_string(), radio })
+        Ok(Self { mcc: mcc.to_string(), net: net.to_string(), area: area.map(|a| a.to_string()).unwrap_or_default(), cell: cell.to_string(), radio })
     }
 
-    /// `222-10-100-12345`.
+    /// `222-10-100-12345` (`?` for an unknown area).
     pub fn label(&self) -> String {
-        format!("{}-{}-{}-{}", self.mcc, self.net, self.area, self.cell)
+        format!("{}-{}-{}-{}", self.mcc, self.net, if self.area.is_empty() { "?" } else { self.area.as_str() }, self.cell)
+    }
+
+    /// The area (LAC/TAC) is known: OpenCelliD's single-cell service needs it; the table does not.
+    pub fn has_area(&self) -> bool {
+        !self.area.is_empty()
     }
 
     /// Whether a cell (from the table or the service) is the one asked.
@@ -84,7 +91,7 @@ impl CellQuery {
         let same = |a: &str, b: &str| a.trim().trim_start_matches('0') == b.trim().trim_start_matches('0');
         same(&c.mcc, &self.mcc)
             && same(&c.net, &self.net)
-            && same(&c.area, &self.area)
+            && (self.area.is_empty() || same(&c.area, &self.area))
             && same(&c.cell, &self.cell)
             && (self.radio.is_empty() || c.radio.eq_ignore_ascii_case(&self.radio))
     }
@@ -251,6 +258,9 @@ mod tests {
         assert_eq!((q.cell.as_str(), q.radio.as_str(), q.enb_sector()), ("25603", "LTE", Some((100, 3))));
         assert_eq!(q.label(), "222-1-7-25603");
         assert!(CellQuery::from_params(&serde_json::json!({"net": "x"})).is_err());
+        let no_area = CellQuery::from_params(&serde_json::json!({"net": 10, "cell": 12633651})).unwrap();
+        assert!(!no_area.has_area() && no_area.label() == "222-10-?-12633651" && no_area.enb_sector() == Some((49350, 51)));
+        assert!(no_area.matches(&Cell { mcc: "222".into(), net: "10".into(), area: "7".into(), cell: "12633651".into(), ..Default::default() }));
         assert!(CellQuery::from_params(&serde_json::json!({"net": 1, "area": 1})).is_err(), "no cell");
         assert!(CellQuery::from_params(&serde_json::json!({"net": 1, "area": 1, "enb": 1, "sector": 300})).is_err());
         assert!(CellQuery::from_params(&serde_json::json!({"net": 1, "area": 1, "cell": 1, "radio": "WIFI"})).is_err());

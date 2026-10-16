@@ -123,6 +123,7 @@ is cosmetic; the framework's proxy must also refuse `db.configure`, `db.test` an
 radio bridges screen) answers where a cell is from MCC (default 222), MNC, LAC/TAC and CID: the
 `cell_db` rows first, then, when the table has none and a token is set, OpenCelliD's
 `/cell/get`. For LTE the cell id is the ECI (eNodeB × 256 + sector); `--enb` and `--sector`
-compute it. The position is OpenCelliD's estimate, a centroid of the users' measurements: the
+compute it. The area is optional when the table has the cell (`cell_db` is searched by network
+and cell id, and the answer carries the area); OpenCelliD's service needs it. The position is OpenCelliD's estimate, a centroid of the users' measurements: the
 error is of the order of the `range` given (hundreds of metres in town, kilometres in the
 country), never the antenna's exact spot.

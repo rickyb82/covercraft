@@ -396,8 +396,12 @@ impl CoverageSource for SqlSource {
 
     fn cell(&mut self, query: &covercraft_core::cells::CellQuery) -> Result<Vec<Cell>> {
         // The columns are text as the export writes them: compare as numbers so `010` finds `10`.
-        let mut sql = "SELECT `radio`, `mcc`, `net`, `area`, `cell`, `lat`, `lon`, `range`, `samples` FROM `cell_db` WHERE (`mcc` + 0) = (? + 0) AND (`net` + 0) = (? + 0) AND (`area` + 0) = (? + 0) AND (`cell` + 0) = (? + 0)".to_string();
-        let mut p = vec![query.mcc.clone(), query.net.clone(), query.area.clone(), query.cell.clone()];
+        let mut sql = "SELECT `radio`, `mcc`, `net`, `area`, `cell`, `lat`, `lon`, `range`, `samples` FROM `cell_db` WHERE (`mcc` + 0) = (? + 0) AND (`net` + 0) = (? + 0) AND (`cell` + 0) = (? + 0)".to_string();
+        let mut p = vec![query.mcc.clone(), query.net.clone(), query.cell.clone()];
+        if query.has_area() {
+            sql.push_str(" AND (`area` + 0) = (? + 0)");
+            p.push(query.area.clone());
+        }
         if !query.radio.is_empty() {
             sql.push_str(" AND UPPER(`radio`) = ?");
             p.push(query.radio.to_ascii_uppercase());

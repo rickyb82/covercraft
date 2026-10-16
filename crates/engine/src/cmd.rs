@@ -283,7 +283,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         id: "cell.find",
         label: "Find a mobile cell by its identifiers",
-        params: "mcc (default 222), net (MNC), area (LAC/TAC), cell (CID/ECI) | enb + sector, radio (GSM|UMTS|LTE|NR)",
+        params: "mcc (default 222), net (MNC), area (LAC/TAC; optional for cell_db, needed for OpenCelliD), cell (CID/ECI) | enb + sector, radio (GSM|UMTS|LTE|NR)",
         local: false,
         run: cell_find,
     },
